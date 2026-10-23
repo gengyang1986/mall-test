@@ -1,0 +1,369 @@
+openapi: 3.0.3
+info:
+  title: mall-search 搜索服务接口（OpenAPI 3.0）
+  version: 1.0.0
+  description: |
+    由 mall 仓库（master，commit dcaa93b）mall-search 模块源码逐方法核对生成，覆盖 EsProductController 全部 8 个接口。
+    关键事实：
+    1. 无鉴权：mall-search/pom.xml 只依赖 mall-mbg（排除 redis）与 spring-boot-starter-data-elasticsearch，不含 mall-security 或 spring-boot-starter-security，/esProduct/** 全部免登录，不需要 Authorization 头（与 mall-admin、mall-portal 的关键差异）。
+    2. 无全局异常处理：mall-search 内检索不到 @RestControllerAdvice，未捕获异常（ES 不可用、PageRequest 参数非法、聚合强转失败）返回 Spring 默认 /error 结构，HTTP 状态非 200，不是 CommonResult。
+    3. 统一响应 CommonResult{code,message,data}：200 操作成功、500 操作失败、404 参数检验失败；本服务代码未使用 401/403。
+    4. 分页 CommonPage{pageNum,pageSize,totalPage,total,list} 由 CommonPage.restPage(Page) 转换，pageNum 为 0 起（Spring Data 语义）；与 mall-admin / mall-portal 使用的 PageHelper 1 起页码不同，跨服务断言时不要混用。
+    5. 依赖环境：MySQL mall 库 + Elasticsearch localhost:9200（application-dev.yml），索引名 pms（@Document(indexName = pms)），文本字段分词器 ik_max_word。
+    6. 响应体泛型统一用 media type 的 x-data-type 扩展标注 data 的真实类型。
+servers:
+  - url: http://localhost:8081
+    description: 本地 dev（application.yml server.port=8081，未配置 context-path，spring.profiles.active=dev）
+tags:
+  - name: EsProductController
+    description: 搜索商品管理（ES 索引 pms 的导入、删除、搜索、推荐、聚合筛选）
+paths:
+  /esProduct/importAll:
+    post:
+      tags: [EsProductController]
+      operationId: importAllList
+      summary: 导入所有数据库中商品到ES
+      description: |
+        全量读取 MySQL 商品（EsProductDao.getAllEsProductList(null)）后 saveAll 写入 ES 索引 pms。
+        data 为遍历写入结果 Iterable 的计数，不是数据库商品总数，可能为 0。
+        无分页、无异步：数据量大时耗时长，需放大客户端超时；重复调用按 _id 覆盖结果幂等，但 data 会按次累计。
+        ES 未启动或索引缺失时异常不被捕获，返回 HTTP 5xx 默认错误体（非 CommonResult）。
+      responses:
+        '200':
+          description: HTTP 恒 200，业务结果在 code
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CommonResult'
+              x-data-type: integer（本次写入 ES 的元素个数）
+        default:
+          $ref: '#/components/responses/UnhandledError'
+  /esProduct/delete/{id}:
+    get:
+      tags: [EsProductController]
+      operationId: deleteEsProductById
+      summary: 根据id删除商品（用 GET 执行删除）
+      description: |
+        按 ES 文档 _id 删除，data 恒为 null，成功 code=200，message=操作成功。
+        危险设计：删除动作落在 GET 上，浏览器 / 爬虫 / 链接预取 / 监控探活命中即触发删除，必须做为风险用例覆盖。
+        不存在的 id 不抛业务异常（ES 删除幂等），具体 code 需实测确认，不要默认为 500。
+      parameters:
+        - name: id
+          in: path
+          required: true
+          description: ES 文档 id，等于 pms_product.id
+          schema: {type: integer, format: int64}
+      responses:
+        '200':
+          description: HTTP 恒 200，业务结果在 code
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CommonResult'
+              x-data-type: 'null（data 恒为 null）'
+        default:
+          $ref: '#/components/responses/UnhandledError'
+  /esProduct/delete/batch:
+    post:
+      tags: [EsProductController]
+      operationId: deleteEsProductBatch
+      summary: 根据id批量删除商品
+      description: |
+        ids 用 @RequestParam(ids) List<Long> 接收，必须放在 query 且逗号分隔（ids=1,2,3），不支持 JSON 请求体。
+        ids 为空集合时 service 有 CollectionUtils.isEmpty 判断直接跳过，仍返回成功。
+        ids 缺失：Spring 参数绑定失败，返回 HTTP 400，不是 CommonResult —— 断言要看 HTTP 状态而非 code。
+        与 GET /esProduct/delete/{id} 语义重叠；若误用 GET 请求 /esProduct/delete/batch，会命中 /delete/{id} 并把 batch 当 Long 转换失败（预期 4xx，需实测确认 400 还是 405）。
+      parameters:
+        - name: ids
+          in: query
+          required: true
+          description: 商品 id 列表，逗号分隔
+          style: form
+          explode: false
+          schema:
+            type: array
+            items: {type: integer, format: int64}
+      responses:
+        '200':
+          description: HTTP 恒 200，业务结果在 code
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CommonResult'
+              x-data-type: 'null（data 恒为 null）'
+        '400':
+          description: ids 缺失时 Spring 参数绑定失败，返回默认错误体
+        default:
+          $ref: '#/components/responses/UnhandledError'
+  /esProduct/create/{id}:
+    post:
+      tags: [EsProductController]
+      operationId: createEsProduct
+      summary: 根据id创建商品（单条导入 ES）
+      description: |
+        从 MySQL 读取该商品并写入 ES。
+        成功：code=200，data=EsProduct（已写入 ES 的文档快照）。
+        失败分支：数据库中查不到该 id（getAllEsProductList(id) 为空）时返回 CommonResult.failed()，即 code=500、message=操作失败、data=null —— 不要断言成 404。
+      parameters:
+        - name: id
+          in: path
+          required: true
+          description: pms_product.id
+          schema: {type: integer, format: int64}
+      responses:
+        '200':
+          description: HTTP 恒 200，业务结果在 code（成功 200 / 商品不存在 500）
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CommonResult'
+              x-data-type: EsProduct
+        default:
+          $ref: '#/components/responses/UnhandledError'
+  /esProduct/search/simple:
+    get:
+      tags: [EsProductController]
+      operationId: searchSimple
+      summary: 简单搜索
+      description: |
+        走 EsProductRepository.findByNameOrSubTitleOrKeywords(name,subTitle,keywords,pageable) 派生查询，三个字段都传同一个 keyword。
+        keyword 声明为 required=false 且代码未判空：缺省时按字段 null 语义查询，实测通常返回 0 条，用例不要断言有数据。
+        pageNum 默认 0（不是 1）、pageSize 默认 5；pageNum < 0 或 pageSize = 0 会触发 PageRequest.of 的 IllegalArgumentException，无异常处理 → HTTP 5xx 默认错误体。
+        返回 CommonPage<EsProduct>，其中 pageNum 为 0 起，pageNum=0 即第一页。
+      parameters:
+        - name: keyword
+          in: query
+          required: false
+          description: 搜索关键词，同时匹配 name / subTitle / keywords
+          schema: {type: string}
+        - name: pageNum
+          in: query
+          required: false
+          description: 页码，0 起（Spring Data 语义）
+          schema: {type: integer, default: 0, minimum: 0}
+        - name: pageSize
+          in: query
+          required: false
+          schema: {type: integer, default: 5, minimum: 1}
+      responses:
+        '200':
+          description: HTTP 恒 200，业务结果在 code
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CommonResult'
+              x-data-type: CommonPage<EsProduct>
+        default:
+          $ref: '#/components/responses/UnhandledError'
+  /esProduct/search:
+    get:
+      tags: [EsProductController]
+      operationId: search
+      summary: 综合搜索、筛选、排序
+      description: |
+        查询构建：keyword 为空 → matchAll；非空 → functionScore（name 权重 10、subTitle 5、keywords 2，scoreMode=Sum，minScore=2.0）。
+        过滤：brandId、productCategoryId 走 bool.must(term) 作为 filter，可与关键词组合，二者独立生效。
+        排序：sort 只识别 1（id desc 新品）、2（sale desc 销量）、3（price asc）、4（price desc），0 与其他任何值（5、-1、空串、非数字会先被 Spring 转整型失败）都不报错，回落为按相关度 —— 参数缺校验，属边界值重点。
+        _score desc 在排序分支之后无条件追加，因此 sort=1..4 为第一排序键、_score 为第二排序键；sort=0 时 matchAll 的 _score 恒为 1，顺序不确定，翻页结果可能重复或漂移（断言用集合而非顺序）。
+        minScore=2.0 是隐藏过滤：仅命中 keywords（权重 2）刚好保留，低于 2 会被过滤，存在「有匹配却返回空」的漏召回风险。
+        返回 CommonPage<EsProduct>，pageNum 0 起；pageNum<0 或 pageSize=0 → 5xx 默认错误体。
+      parameters:
+        - name: keyword
+          in: query
+          required: false
+          schema: {type: string}
+        - name: brandId
+          in: query
+          required: false
+          description: 品牌 id 精确过滤
+          schema: {type: integer, format: int64}
+        - name: productCategoryId
+          in: query
+          required: false
+          description: 商品分类 id 精确过滤
+          schema: {type: integer, format: int64}
+        - name: pageNum
+          in: query
+          required: false
+          description: 页码，0 起
+          schema: {type: integer, default: 0, minimum: 0}
+        - name: pageSize
+          in: query
+          required: false
+          schema: {type: integer, default: 5, minimum: 1}
+        - name: sort
+          in: query
+          required: false
+          description: 0 相关度；1 新品；2 销量；3 价格升序；4 价格降序。越界值不校验，回落相关度
+          schema:
+            type: integer
+            default: 0
+            enum: [0, 1, 2, 3, 4]
+      responses:
+        '200':
+          description: HTTP 恒 200，业务结果在 code
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CommonResult'
+              x-data-type: CommonPage<EsProduct>
+        default:
+          $ref: '#/components/responses/UnhandledError'
+  /esProduct/recommend/{id}:
+    get:
+      tags: [EsProductController]
+      operationId: recommend
+      summary: 根据商品id推荐商品
+      description: |
+        以该商品 name 为关键词，叠加同品牌（权重 5）、同分类（权重 3）做 functionScore 推荐，并用 bool.mustNot(term id) 过滤掉自身。
+        高风险缺陷点：当 id 在数据库中不存在时，service 返回 new PageImpl<>(empty)（未传 Pageable → Pageable.unpaged()），
+        CommonPage.restPage 依次调用 getTotalPages() / getSize() 会抛 UnsupportedOperationException，而 mall-search 无全局异常处理，
+        最终返回 HTTP 5xx 的 Spring 默认错误体而不是 CommonResult —— 应作为该接口的 P0 验证项。
+        商品存在但 ES 无相关文档：返回 code=200、total=0 的正常空页，与上一条必须区分断言。
+        分页参数同 /search，pageNum 0 起；pageNum<0 或 pageSize=0 同样 → 5xx。
+      parameters:
+        - name: id
+          in: path
+          required: true
+          description: 参照商品 id（pms_product.id）
+          schema: {type: integer, format: int64}
+        - name: pageNum
+          in: query
+          required: false
+          description: 页码，0 起
+          schema: {type: integer, default: 0, minimum: 0}
+        - name: pageSize
+          in: query
+          required: false
+          schema: {type: integer, default: 5, minimum: 1}
+      responses:
+        '200':
+          description: HTTP 恒 200，业务结果在 code；id 不存在时为 5xx 默认错误体
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CommonResult'
+              x-data-type: CommonPage<EsProduct>
+        default:
+          $ref: '#/components/responses/UnhandledError'
+  /esProduct/search/relate:
+    get:
+      tags: [EsProductController]
+      operationId: searchRelatedInfo
+      summary: 获取搜索的相关品牌、分类及筛选属性
+      description: |
+        聚合查询：keyword 为空 → matchAll，否则 multiMatch(name,subTitle,keywords)。
+        品牌 brandNames、分类 productCategoryNames：terms 聚合 size(10)，只返回前 10 个 key，且不返回 doc_count（无法据此做数量断言）。
+        属性 allAttrValues：nested(attrValueList) → filter(type=1，只保留参数型，排除 type=0 规格) → terms(productAttributeId, size 10) → 子聚合 attrValues / attrNames（各 size 10）。
+        attrName 取 attrNames 第 0 个桶的 key，多值时只保留首个，属实现细节，断言应做包含而非全等。
+        convertProductRelatedInfo 把聚合强转为 ElasticsearchAggregations 并直接 get 三个聚合：ES 无数据或聚合缺失时有 ClassCastException / NPE 风险 → 5xx，需单独构造空索引场景验证。
+      parameters:
+        - name: keyword
+          in: query
+          required: false
+          description: 搜索关键词，参与品牌/分类/属性聚合的范围限定
+          schema: {type: string}
+      responses:
+        '200':
+          description: HTTP 恒 200，业务结果在 code
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CommonResult'
+              x-data-type: EsProductRelatedInfo
+        default:
+          $ref: '#/components/responses/UnhandledError'
+components:
+  responses:
+    UnhandledError:
+      description: 未捕获异常（mall-search 无 @RestControllerAdvice）：返回 Spring Boot 默认 /error 结构，HTTP 状态为 4xx/5xx，字段为 timestamp/status/error/path，不是 CommonResult
+  schemas:
+    CommonResult:
+      type: object
+      description: 通用返回结果封装（mall-common）
+      properties:
+        code:
+          type: integer
+          format: int64
+          description: 业务状态码，200 成功 / 500 操作失败 / 404 参数检验失败
+          example: 200
+        message:
+          type: string
+          example: 操作成功
+        data:
+          nullable: true
+          description: 业务数据，真实类型见 media type 的 x-data-type
+    CommonPage:
+      type: object
+      description: 通用分页封装，由 Spring Data Page 转换，pageNum 为 0 起
+      properties:
+        pageNum: {type: integer, description: 当前页码，0 起}
+        pageSize: {type: integer, description: 每页数量}
+        totalPage: {type: integer, description: 总页数}
+        total: {type: integer, format: int64, description: 总条数}
+        list:
+          type: array
+          description: 当前页数据，元素类型见 x-data-type
+          items: {}
+    EsProduct:
+      type: object
+      description: ES 搜索商品文档，索引 pms（分片 1、副本 0）
+      properties:
+        id: {type: integer, format: int64, description: ES _id，等于 pms_product.id}
+        productSn: {type: string, description: 货号，Keyword 类型}
+        brandId: {type: integer, format: int64}
+        brandName: {type: string, description: Keyword 类型，用于品牌聚合}
+        productCategoryId: {type: integer, format: int64}
+        productCategoryName: {type: string, description: Keyword 类型，用于分类聚合}
+        pic: {type: string}
+        name: {type: string, description: ik_max_word 分词，搜索权重 10}
+        subTitle: {type: string, description: ik_max_word 分词，搜索权重 5}
+        keywords: {type: string, description: ik_max_word 分词，搜索权重 2}
+        price: {type: number, description: BigDecimal 金额}
+        sale: {type: integer, description: 销量，sort=2 排序键}
+        newStatus: {type: integer, description: 新品状态 0 否 1 是}
+        recommandStatus: {type: integer, description: 推荐状态 0 否 1 是}
+        stock: {type: integer}
+        promotionType: {type: integer}
+        sort: {type: integer}
+        attrValueList:
+          type: array
+          description: Nested 类型属性值列表
+          items:
+            $ref: '#/components/schemas/EsProductAttributeValue'
+    EsProductAttributeValue:
+      type: object
+      description: 商品属性值（Nested 子文档）
+      properties:
+        id: {type: integer, format: int64}
+        productAttributeId: {type: integer, format: int64, description: 聚合筛选属性时作为分组键}
+        value: {type: string, description: 属性值，Keyword 类型}
+        type: {type: integer, description: 0 规格 / 1 参数，聚合时只取 1}
+        name: {type: string, description: 属性名称，Keyword 类型}
+    EsProductRelatedInfo:
+      type: object
+      description: 搜索关联信息（品牌、分类、筛选属性）
+      properties:
+        brandNames:
+          type: array
+          description: 相关品牌名称，terms 聚合 size 10
+          items: {type: string}
+        productCategoryNames:
+          type: array
+          description: 相关分类名称，terms 聚合 size 10
+          items: {type: string}
+        productAttrs:
+          type: array
+          description: 筛选属性，仅 type=1 的参数型，最多 10 个
+          items:
+            $ref: '#/components/schemas/ProductAttr'
+    ProductAttr:
+      type: object
+      description: 聚合得到的可筛选属性
+      properties:
+        attrId: {type: integer, format: int64, description: 等于 productAttributeId}
+        attrName: {type: string, description: 取 attrNames 聚合首个桶的 key}
+        attrValues:
+          type: array
+          description: 可选属性值，terms 聚合 size 10
+          items: {type: string}
