@@ -1,0 +1,1738 @@
+openapi: 3.0.3
+info:
+  title: Mall 商城后台管理 API（mall-admin）
+  version: 1.0.0
+  description: |
+    基于 mall 仓库 master 分支（dcaa93b）源码静态解析生成，覆盖 mall-admin 的 31 个 Controller。
+    服务：mall-admin（Spring Boot，默认端口 8080，未配置 context-path）。
+    统一返回封装：CommonResult{code,message,data}，code=200 表示成功；data 为分页时为 CommonPage{pageNum,pageSize,totalPage,total,list}。
+    鉴权：请求头 Authorization: Bearer <token>；白名单接口（/admin/login、/admin/register、/admin/info、/admin/logout）已标注 security: []。
+    约定：CommonResult.data 的具体类型由各接口响应上的 x-data-type 标注；未对泛型逐个展开，以便文件可维护。
+    注意：源码中部分删除类接口使用 GET（如 GET /brand/delete/{id}、GET /productAttribute/category/delete/{id}），已按源码如实登记。
+  x-source-repo: mall
+  x-source-ref: master
+  x-source-commit: dcaa93b
+servers:
+  - url: http://localhost:8080
+    description: 本地开发环境（mall-admin 默认端口）
+security:
+  - bearerAuth: []
+tags:
+  - { name: UmsAdminController, description: 后台用户管理 }
+  - { name: UmsRoleController, description: 后台用户角色管理 }
+  - { name: UmsMenuController, description: 后台菜单管理 }
+  - { name: UmsResourceController, description: 后台资源管理 }
+  - { name: UmsResourceCategoryController, description: 后台资源分类管理 }
+  - { name: UmsMemberLevelController, description: 会员等级管理 }
+  - { name: PmsBrandController, description: 商品品牌管理 }
+  - { name: PmsProductController, description: 商品管理 }
+  - { name: PmsProductCategoryController, description: 商品分类管理 }
+  - { name: PmsProductAttributeController, description: 商品属性管理 }
+  - { name: PmsProductAttributeCategoryController, description: 商品属性分类管理 }
+  - { name: PmsSkuStockController, description: sku商品库存管理 }
+  - { name: SmsCouponController, description: 优惠券管理 }
+  - { name: SmsCouponHistoryController, description: 优惠券领取记录管理 }
+  - { name: SmsFlashPromotionController, description: 限时购活动管理 }
+  - { name: SmsFlashPromotionSessionController, description: 限时购场次管理 }
+  - { name: SmsFlashPromotionProductRelationController, description: 限时购和商品关系管理 }
+  - { name: SmsHomeAdvertiseController, description: 首页轮播广告管理 }
+  - { name: SmsHomeBrandController, description: 首页品牌管理 }
+  - { name: SmsHomeNewProductController, description: 首页新品管理 }
+  - { name: SmsHomeRecommendProductController, description: 首页人气推荐管理 }
+  - { name: SmsHomeRecommendSubjectController, description: 首页专题推荐管理 }
+  - { name: OmsOrderController, description: 订单管理 }
+  - { name: OmsOrderReturnApplyController, description: 订单退货申请管理 }
+  - { name: OmsOrderReturnReasonController, description: 退货原因管理 }
+  - { name: OmsOrderSettingController, description: 订单设置管理 }
+  - { name: OmsCompanyAddressController, description: 收货地址管理 }
+  - { name: CmsSubjectController, description: 商品专题管理 }
+  - { name: CmsPrefrenceAreaController, description: 商品优选管理 }
+  - { name: MinioController, description: MinIO对象存储管理 }
+  - { name: OssController, description: Oss对象存储管理 }
+paths:
+  /admin/register:
+    post:
+      tags: [UmsAdminController]
+      summary: 用户注册
+      operationId: adminRegister
+      security: []
+      requestBody: { required: true, content: { application/json: { schema: { $ref: '#/components/schemas/UmsAdminParam' } } } }
+      responses:
+        '200': { description: 成功, x-data-type: UmsAdmin, content: { application/json: { schema: { $ref: '#/components/schemas/CommonResult' } } } }
+  /admin/login:
+    post:
+      tags: [UmsAdminController]
+      summary: 登录以后返回token
+      operationId: adminLogin
+      security: []
+      requestBody: { required: true, content: { application/json: { schema: { $ref: '#/components/schemas/UmsAdminLoginParam' } } } }
+      responses:
+        '200': { description: 成功返回 token 与 tokenHead；用户名或密码错误时 code=404 且 message 为 用户名或密码错误, x-data-type: Map(token,tokenHead), content: { application/json: { schema: { $ref: '#/components/schemas/CommonResult' } } } }
+  /admin/refreshToken:
+    get:
+      tags: [UmsAdminController]
+      summary: 刷新token
+      operationId: adminRefreshToken
+      responses:
+        '200': { description: 成功返回新的 token 与 tokenHead；token 过期时返回失败, x-data-type: Map(token,tokenHead), content: { application/json: { schema: { $ref: '#/components/schemas/CommonResult' } } } }
+  /admin/info:
+    get:
+      tags: [UmsAdminController]
+      summary: 获取当前登录用户信息
+      operationId: adminGetAdminInfo
+      security: []
+      responses:
+        '200': { description: 成功；未登录返回 code=401, x-data-type: Map(username,menus,icon,roles), content: { application/json: { schema: { $ref: '#/components/schemas/CommonResult' } } } }
+  /admin/logout:
+    post:
+      tags: [UmsAdminController]
+      summary: 登出功能
+      operationId: adminLogout
+      security: []
+      responses:
+        '200': { description: 成功, x-data-type: 'null', content: { application/json: { schema: { $ref: '#/components/schemas/CommonResult' } } } }
+  /admin/list:
+    get:
+      tags: [UmsAdminController]
+      summary: 根据用户名或姓名分页获取用户列表
+      operationId: adminList
+      parameters:
+        - { name: keyword, in: query, required: false, schema: { type: string } }
+        - $ref: '#/components/parameters/PageSize'
+        - $ref: '#/components/parameters/PageNum'
+      responses:
+        '200': { description: 成功, x-data-type: 'CommonPage<UmsAdmin>', content: { application/json: { schema: { $ref: '#/components/schemas/CommonResult' } } } }
+  /admin/{id}:
+    get:
+      tags: [UmsAdminController]
+      summary: 获取指定用户信息
+      operationId: adminGetItem
+      parameters: [ $ref: '#/components/parameters/IdPath' ]
+      responses:
+        '200': { description: 成功, x-data-type: UmsAdmin, content: { application/json: { schema: { $ref: '#/components/schemas/CommonResult' } } } }
+  /admin/update/{id}:
+    post:
+      tags: [UmsAdminController]
+      summary: 修改指定用户信息
+      operationId: adminUpdate
+      parameters: [ $ref: '#/components/parameters/IdPath' ]
+      requestBody: { required: true, content: { application/json: { schema: { $ref: '#/components/schemas/UmsAdmin' } } } }
+      responses:
+        '200': { description: 成功返回受影响行数, x-data-type: integer, content: { application/json: { schema: { $ref: '#/components/schemas/CommonResult' } } } }
+  /admin/updatePassword:
+    post:
+      tags: [UmsAdminController]
+      summary: 修改指定用户密码
+      operationId: adminUpdatePassword
+      requestBody: { required: true, content: { application/json: { schema: { $ref: '#/components/schemas/UpdateAdminPasswordParam' } } } }
+      responses:
+        '200': { description: 成功返回状态码；-1 参数不合法、-2 找不到用户、-3 旧密码错误时返回失败, x-data-type: integer, content: { application/json: { schema: { $ref: '#/components/schemas/CommonResult' } } } }
+  /admin/delete/{id}:
+    post:
+      tags: [UmsAdminController]
+      summary: 删除指定用户信息
+      operationId: adminDelete
+      parameters: [ $ref: '#/components/parameters/IdPath' ]
+      responses:
+        '200': { description: 成功, x-data-type: integer, content: { application/json: { schema: { $ref: '#/components/schemas/CommonResult' } } } }
+  /admin/updateStatus/{id}:
+    post:
+      tags: [UmsAdminController]
+      summary: 修改帐号状态
+      operationId: adminUpdateStatus
+      parameters:
+        - $ref: '#/components/parameters/IdPath'
+        - { name: status, in: query, required: true, schema: { type: integer, description: '帐号启用状态：0->禁用；1->启用' } }
+      responses:
+        '200': { description: 成功, x-data-type: integer, content: { application/json: { schema: { $ref: '#/components/schemas/CommonResult' } } } }
+  /admin/role/update:
+    post:
+      tags: [UmsAdminController]
+      summary: 给用户分配角色
+      operationId: adminUpdateRole
+      parameters:
+        - { name: adminId, in: query, required: true, schema: { type: integer, format: int64 } }
+        - { name: roleIds, in: query, required: true, schema: { type: array, items: { type: integer, format: int64 } } }
+      responses:
+        '200': { description: 成功, x-data-type: integer, content: { application/json: { schema: { $ref: '#/components/schemas/CommonResult' } } } }
+  /admin/role/{adminId}:
+    get:
+      tags: [UmsAdminController]
+      summary: 获取指定用户的角色
+      operationId: adminGetRoleList
+      parameters: [ { name: adminId, in: path, required: true, schema: { type: integer, format: int64 } } ]
+      responses:
+        '200': { description: 成功, x-data-type: 'List<UmsRole>', content: { application/json: { schema: { $ref: '#/components/schemas/CommonResult' } } } }
+  /role/create:
+    post:
+      tags: [UmsRoleController]
+      summary: 添加角色
+      operationId: roleCreate
+      requestBody: { required: true, content: { application/json: { schema: { $ref: '#/components/schemas/UmsRole' } } } }
+      responses:
+        '200': { description: 成功, x-data-type: integer, content: { application/json: { schema: { $ref: '#/components/schemas/CommonResult' } } } }
+  /role/update/{id}:
+    post:
+      tags: [UmsRoleController]
+      summary: 修改角色
+      operationId: roleUpdate
+      parameters: [ $ref: '#/components/parameters/IdPath' ]
+      requestBody: { required: true, content: { application/json: { schema: { $ref: '#/components/schemas/UmsRole' } } } }
+      responses:
+        '200': { description: 成功, x-data-type: integer, content: { application/json: { schema: { $ref: '#/components/schemas/CommonResult' } } } }
+  /role/delete:
+    post:
+      tags: [UmsRoleController]
+      summary: 批量删除角色
+      operationId: roleDelete
+      parameters: [ $ref: '#/components/parameters/Ids' ]
+      responses:
+        '200': { description: 成功, x-data-type: integer, content: { application/json: { schema: { $ref: '#/components/schemas/CommonResult' } } } }
+  /role/listAll:
+    get:
+      tags: [UmsRoleController]
+      summary: 获取所有角色
+      operationId: roleListAll
+      responses:
+        '200': { description: 成功, x-data-type: 'List<UmsRole>', content: { application/json: { schema: { $ref: '#/components/schemas/CommonResult' } } } }
+  /role/list:
+    get:
+      tags: [UmsRoleController]
+      summary: 根据角色名称分页获取角色列表
+      operationId: roleList
+      parameters:
+        - { name: keyword, in: query, required: false, schema: { type: string } }
+        - $ref: '#/components/parameters/PageSize'
+        - $ref: '#/components/parameters/PageNum'
+      responses:
+        '200': { description: 成功, x-data-type: 'CommonPage<UmsRole>', content: { application/json: { schema: { $ref: '#/components/schemas/CommonResult' } } } }
+  /role/updateStatus/{id}:
+    post:
+      tags: [UmsRoleController]
+      summary: 修改角色状态
+      operationId: roleUpdateStatus
+      parameters:
+        - $ref: '#/components/parameters/IdPath'
+        - { name: status, in: query, required: true, schema: { type: integer, description: '启用状态：0->禁用；1->启用' } }
+      responses:
+        '200': { description: 成功, x-data-type: integer, content: { application/json: { schema: { $ref: '#/components/schemas/CommonResult' } } } }
+  /role/listMenu/{roleId}:
+    get:
+      tags: [UmsRoleController]
+      summary: 获取角色相关菜单
+      operationId: roleListMenu
+      parameters: [ { name: roleId, in: path, required: true, schema: { type: integer, format: int64 } } ]
+      responses:
+        '200': { description: 成功, x-data-type: 'List<UmsMenu>', content: { application/json: { schema: { $ref: '#/components/schemas/CommonResult' } } } }
+  /role/listResource/{roleId}:
+    get:
+      tags: [UmsRoleController]
+      summary: 获取角色相关资源
+      operationId: roleListResource
+      parameters: [ { name: roleId, in: path, required: true, schema: { type: integer, format: int64 } } ]
+      responses:
+        '200': { description: 成功, x-data-type: 'List<UmsResource>', content: { application/json: { schema: { $ref: '#/components/schemas/CommonResult' } } } }
+  /role/allocMenu:
+    post:
+      tags: [UmsRoleController]
+      summary: 给角色分配菜单
+      operationId: roleAllocMenu
+      parameters:
+        - { name: roleId, in: query, required: true, schema: { type: integer, format: int64 } }
+        - { name: menuIds, in: query, required: true, schema: { type: array, items: { type: integer, format: int64 } } }
+      responses:
+        '200': { description: 成功, x-data-type: integer, content: { application/json: { schema: { $ref: '#/components/schemas/CommonResult' } } } }
+  /role/allocResource:
+    post:
+      tags: [UmsRoleController]
+      summary: 给角色分配资源
+      operationId: roleAllocResource
+      parameters:
+        - { name: roleId, in: query, required: true, schema: { type: integer, format: int64 } }
+        - { name: resourceIds, in: query, required: true, schema: { type: array, items: { type: integer, format: int64 } } }
+      responses:
+        '200': { description: 成功, x-data-type: integer, content: { application/json: { schema: { $ref: '#/components/schemas/CommonResult' } } } }
+  /menu/create:
+    post:
+      tags: [UmsMenuController]
+      summary: 添加后台菜单
+      operationId: menuCreate
+      requestBody: { required: true, content: { application/json: { schema: { $ref: '#/components/schemas/UmsMenu' } } } }
+      responses:
+        '200': { description: 成功, x-data-type: integer, content: { application/json: { schema: { $ref: '#/components/schemas/CommonResult' } } } }
+  /menu/update/{id}:
+    post:
+      tags: [UmsMenuController]
+      summary: 修改后台菜单
+      operationId: menuUpdate
+      parameters: [ $ref: '#/components/parameters/IdPath' ]
+      requestBody: { required: true, content: { application/json: { schema: { $ref: '#/components/schemas/UmsMenu' } } } }
+      responses:
+        '200': { description: 成功, x-data-type: integer, content: { application/json: { schema: { $ref: '#/components/schemas/CommonResult' } } } }
+  /menu/{id}:
+    get:
+      tags: [UmsMenuController]
+      summary: 根据ID获取菜单详情
+      operationId: menuGetItem
+      parameters: [ $ref: '#/components/parameters/IdPath' ]
+      responses:
+        '200': { description: 成功, x-data-type: UmsMenu, content: { application/json: { schema: { $ref: '#/components/schemas/CommonResult' } } } }
+  /menu/delete/{id}:
+    post:
+      tags: [UmsMenuController]
+      summary: 根据ID删除后台菜单
+      operationId: menuDelete
+      parameters: [ $ref: '#/components/parameters/IdPath' ]
+      responses:
+        '200': { description: 成功, x-data-type: integer, content: { application/json: { schema: { $ref: '#/components/schemas/CommonResult' } } } }
+  /menu/list/{parentId}:
+    get:
+      tags: [UmsMenuController]
+      summary: 分页查询后台菜单
+      operationId: menuList
+      parameters:
+        - { name: parentId, in: path, required: true, schema: { type: integer, format: int64 } }
+        - $ref: '#/components/parameters/PageSize'
+        - $ref: '#/components/parameters/PageNum'
+      responses:
+        '200': { description: 成功, x-data-type: 'CommonPage<UmsMenu>', content: { application/json: { schema: { $ref: '#/components/schemas/CommonResult' } } } }
+  /menu/treeList:
+    get:
+      tags: [UmsMenuController]
+      summary: 树形结构返回所有菜单列表
+      operationId: menuTreeList
+      responses:
+        '200': { description: 成功, x-data-type: 'List<UmsMenuNode>', content: { application/json: { schema: { $ref: '#/components/schemas/CommonResult' } } } }
+  /menu/updateHidden/{id}:
+    post:
+      tags: [UmsMenuController]
+      summary: 修改菜单显示状态
+      operationId: menuUpdateHidden
+      parameters:
+        - $ref: '#/components/parameters/IdPath'
+        - { name: hidden, in: query, required: true, schema: { type: integer, description: '前端隐藏：0->显示；1->隐藏' } }
+      responses:
+        '200': { description: 成功, x-data-type: integer, content: { application/json: { schema: { $ref: '#/components/schemas/CommonResult' } } } }
+  /resource/create:
+    post:
+      tags: [UmsResourceController]
+      summary: 添加后台资源
+      operationId: resourceCreate
+      requestBody: { required: true, content: { application/json: { schema: { $ref: '#/components/schemas/UmsResource' } } } }
+      responses:
+        '200': { description: 成功, x-data-type: integer, content: { application/json: { schema: { $ref: '#/components/schemas/CommonResult' } } } }
+  /resource/update/{id}:
+    post:
+      tags: [UmsResourceController]
+      summary: 修改后台资源
+      operationId: resourceUpdate
+      parameters: [ $ref: '#/components/parameters/IdPath' ]
+      requestBody: { required: true, content: { application/json: { schema: { $ref: '#/components/schemas/UmsResource' } } } }
+      responses:
+        '200': { description: 成功, x-data-type: integer, content: { application/json: { schema: { $ref: '#/components/schemas/CommonResult' } } } }
+  /resource/{id}:
+    get:
+      tags: [UmsResourceController]
+      summary: 根据ID获取资源详情
+      operationId: resourceGetItem
+      parameters: [ $ref: '#/components/parameters/IdPath' ]
+      responses:
+        '200': { description: 成功, x-data-type: UmsResource, content: { application/json: { schema: { $ref: '#/components/schemas/CommonResult' } } } }
+  /resource/delete/{id}:
+    post:
+      tags: [UmsResourceController]
+      summary: 根据ID删除后台资源
+      operationId: resourceDelete
+      parameters: [ $ref: '#/components/parameters/IdPath' ]
+      responses:
+        '200': { description: 成功, x-data-type: integer, content: { application/json: { schema: { $ref: '#/components/schemas/CommonResult' } } } }
+  /resource/list:
+    get:
+      tags: [UmsResourceController]
+      summary: 分页模糊查询后台资源
+      operationId: resourceList
+      parameters:
+        - { name: categoryId, in: query, required: false, schema: { type: integer, format: int64 } }
+        - { name: nameKeyword, in: query, required: false, schema: { type: string } }
+        - { name: urlKeyword, in: query, required: false, schema: { type: string } }
+        - $ref: '#/components/parameters/PageSize'
+        - $ref: '#/components/parameters/PageNum'
+      responses:
+        '200': { description: 成功, x-data-type: 'CommonPage<UmsResource>', content: { application/json: { schema: { $ref: '#/components/schemas/CommonResult' } } } }
+  /resource/listAll:
+    get:
+      tags: [UmsResourceController]
+      summary: 查询所有后台资源
+      operationId: resourceListAll
+      responses:
+        '200': { description: 成功, x-data-type: 'List<UmsResource>', content: { application/json: { schema: { $ref: '#/components/schemas/CommonResult' } } } }
+  /resourceCategory/listAll:
+    get:
+      tags: [UmsResourceCategoryController]
+      summary: 查询所有后台资源分类
+      operationId: resourceCategoryListAll
+      responses:
+        '200': { description: 成功, x-data-type: 'List<UmsResourceCategory>', content: { application/json: { schema: { $ref: '#/components/schemas/CommonResult' } } } }
+  /resourceCategory/create:
+    post:
+      tags: [UmsResourceCategoryController]
+      summary: 添加后台资源分类
+      operationId: resourceCategoryCreate
+      requestBody: { required: true, content: { application/json: { schema: { $ref: '#/components/schemas/UmsResourceCategory' } } } }
+      responses:
+        '200': { description: 成功, x-data-type: integer, content: { application/json: { schema: { $ref: '#/components/schemas/CommonResult' } } } }
+  /resourceCategory/update/{id}:
+    post:
+      tags: [UmsResourceCategoryController]
+      summary: 修改后台资源分类
+      operationId: resourceCategoryUpdate
+      parameters: [ $ref: '#/components/parameters/IdPath' ]
+      requestBody: { required: true, content: { application/json: { schema: { $ref: '#/components/schemas/UmsResourceCategory' } } } }
+      responses:
+        '200': { description: 成功, x-data-type: integer, content: { application/json: { schema: { $ref: '#/components/schemas/CommonResult' } } } }
+  /resourceCategory/delete/{id}:
+    post:
+      tags: [UmsResourceCategoryController]
+      summary: 根据ID删除后台资源分类
+      operationId: resourceCategoryDelete
+      parameters: [ $ref: '#/components/parameters/IdPath' ]
+      responses:
+        '200': { description: 成功, x-data-type: integer, content: { application/json: { schema: { $ref: '#/components/schemas/CommonResult' } } } }
+  /memberLevel/list:
+    get:
+      tags: [UmsMemberLevelController]
+      summary: 查询所有会员等级
+      operationId: memberLevelList
+      parameters:
+        - { name: defaultStatus, in: query, required: true, schema: { type: integer, description: '是否为默认等级：0->不是；1->是' } }
+      responses:
+        '200': { description: 成功, x-data-type: 'List<UmsMemberLevel>', content: { application/json: { schema: { $ref: '#/components/schemas/CommonResult' } } } }
+  /brand/listAll:
+    get:
+      tags: [PmsBrandController]
+      summary: 获取全部品牌列表
+      operationId: brandListAll
+      responses:
+        '200': { description: 成功, x-data-type: 'List<PmsBrand>', content: { application/json: { schema: { $ref: '#/components/schemas/CommonResult' } } } }
+  /brand/create:
+    post:
+      tags: [PmsBrandController]
+      summary: 添加品牌
+      operationId: brandCreate
+      requestBody: { required: true, content: { application/json: { schema: { $ref: '#/components/schemas/PmsBrandParam' } } } }
+      responses:
+        '200': { description: 成功, x-data-type: integer, content: { application/json: { schema: { $ref: '#/components/schemas/CommonResult' } } } }
+  /brand/update/{id}:
+    post:
+      tags: [PmsBrandController]
+      summary: 更新品牌
+      operationId: brandUpdate
+      parameters: [ $ref: '#/components/parameters/IdPath' ]
+      requestBody: { required: true, content: { application/json: { schema: { $ref: '#/components/schemas/PmsBrandParam' } } } }
+      responses:
+        '200': { description: 成功, x-data-type: integer, content: { application/json: { schema: { $ref: '#/components/schemas/CommonResult' } } } }
+  /brand/delete/{id}:
+    get:
+      tags: [PmsBrandController]
+      summary: 删除品牌（源码使用 GET）
+      operationId: brandDelete
+      parameters: [ $ref: '#/components/parameters/IdPath' ]
+      responses:
+        '200': { description: 成功, x-data-type: 'null', content: { application/json: { schema: { $ref: '#/components/schemas/CommonResult' } } } }
+  /brand/list:
+    get:
+      tags: [PmsBrandController]
+      summary: 根据品牌名称分页获取品牌列表
+      operationId: brandList
+      parameters:
+        - { name: keyword, in: query, required: false, schema: { type: string } }
+        - { name: showStatus, in: query, required: false, schema: { type: integer } }
+        - $ref: '#/components/parameters/PageNum'
+        - $ref: '#/components/parameters/PageSize'
+      responses:
+        '200': { description: 成功, x-data-type: 'CommonPage<PmsBrand>', content: { application/json: { schema: { $ref: '#/components/schemas/CommonResult' } } } }
+  /brand/{id}:
+    get:
+      tags: [PmsBrandController]
+      summary: 根据编号查询品牌信息
+      operationId: brandGetItem
+      parameters: [ $ref: '#/components/parameters/IdPath' ]
+      responses:
+        '200': { description: 成功, x-data-type: PmsBrand, content: { application/json: { schema: { $ref: '#/components/schemas/CommonResult' } } } }
+  /brand/delete/batch:
+    post:
+      tags: [PmsBrandController]
+      summary: 批量删除品牌
+      operationId: brandDeleteBatch
+      parameters: [ $ref: '#/components/parameters/Ids' ]
+      responses:
+        '200': { description: 成功, x-data-type: integer, content: { application/json: { schema: { $ref: '#/components/schemas/CommonResult' } } } }
+  /brand/update/showStatus:
+    post:
+      tags: [PmsBrandController]
+      summary: 批量更新显示状态
+      operationId: brandUpdateShowStatus
+      parameters:
+        - $ref: '#/components/parameters/Ids'
+        - { name: showStatus, in: query, required: true, schema: { type: integer, description: '是否进行显示：0->不显示；1->显示' } }
+      responses:
+        '200': { description: 成功, x-data-type: integer, content: { application/json: { schema: { $ref: '#/components/schemas/CommonResult' } } } }
+  /brand/update/factoryStatus:
+    post:
+      tags: [PmsBrandController]
+      summary: 批量更新厂家制造商状态
+      operationId: brandUpdateFactoryStatus
+      parameters:
+        - $ref: '#/components/parameters/Ids'
+        - { name: factoryStatus, in: query, required: true, schema: { type: integer, description: '是否为厂家制造商：0->不是；1->是' } }
+      responses:
+        '200': { description: 成功, x-data-type: integer, content: { application/json: { schema: { $ref: '#/components/schemas/CommonResult' } } } }
+  /product/create:
+    post:
+      tags: [PmsProductController]
+      summary: 创建商品
+      operationId: productCreate
+      requestBody: { required: true, content: { application/json: { schema: { $ref: '#/components/schemas/PmsProductParam' } } } }
+      responses:
+        '200': { description: 成功, x-data-type: integer, content: { application/json: { schema: { $ref: '#/components/schemas/CommonResult' } } } }
+  /product/updateInfo/{id}:
+    get:
+      tags: [PmsProductController]
+      summary: 根据商品id获取商品编辑信息
+      operationId: productGetUpdateInfo
+      parameters: [ $ref: '#/components/parameters/IdPath' ]
+      responses:
+        '200': { description: 成功, x-data-type: PmsProductResult, content: { application/json: { schema: { $ref: '#/components/schemas/CommonResult' } } } }
+  /product/update/{id}:
+    post:
+      tags: [PmsProductController]
+      summary: 更新商品
+      operationId: productUpdate
+      parameters: [ $ref: '#/components/parameters/IdPath' ]
+      requestBody: { required: true, content: { application/json: { schema: { $ref: '#/components/schemas/PmsProductParam' } } } }
+      responses:
+        '200': { description: 成功, x-data-type: integer, content: { application/json: { schema: { $ref: '#/components/schemas/CommonResult' } } } }
+  /product/list:
+    get:
+      tags: [PmsProductController]
+      summary: 查询商品
+      operationId: productList
+      parameters:
+        - { name: publishStatus, in: query, required: false, schema: { type: integer, description: '上架状态：0->下架；1->上架' } }
+        - { name: verifyStatus, in: query, required: false, schema: { type: integer, description: '审核状态：0->未审核；1->审核通过' } }
+        - { name: keyword, in: query, required: false, schema: { type: string, description: 商品名称模糊关键字 } }
+        - { name: productSn, in: query, required: false, schema: { type: string, description: 商品货号 } }
+        - { name: productCategoryId, in: query, required: false, schema: { type: integer, format: int64 } }
+        - { name: brandId, in: query, required: false, schema: { type: integer, format: int64 } }
+        - $ref: '#/components/parameters/PageSize'
+        - $ref: '#/components/parameters/PageNum'
+      responses:
+        '200': { description: 成功, x-data-type: 'CommonPage<PmsProduct>', content: { application/json: { schema: { $ref: '#/components/schemas/CommonResult' } } } }
+  /product/simpleList:
+    get:
+      tags: [PmsProductController]
+      summary: 根据商品名称或货号模糊查询
+      operationId: productSimpleList
+      parameters:
+        - { name: keyword, in: query, required: false, schema: { type: string } }
+      responses:
+        '200': { description: 成功, x-data-type: 'List<PmsProduct>', content: { application/json: { schema: { $ref: '#/components/schemas/CommonResult' } } } }
+  /product/update/verifyStatus:
+    post:
+      tags: [PmsProductController]
+      summary: 批量修改审核状态
+      operationId: productUpdateVerifyStatus
+      parameters:
+        - $ref: '#/components/parameters/Ids'
+        - { name: verifyStatus, in: query, required: true, schema: { type: integer } }
+        - { name: detail, in: query, required: true, schema: { type: string, description: 审核备注 } }
+      responses:
+        '200': { description: 成功, x-data-type: integer, content: { application/json: { schema: { $ref: '#/components/schemas/CommonResult' } } } }
+  /product/update/publishStatus:
+    post:
+      tags: [PmsProductController]
+      summary: 批量上下架商品
+      operationId: productUpdatePublishStatus
+      parameters:
+        - $ref: '#/components/parameters/Ids'
+        - { name: publishStatus, in: query, required: true, schema: { type: integer } }
+      responses:
+        '200': { description: 成功, x-data-type: integer, content: { application/json: { schema: { $ref: '#/components/schemas/CommonResult' } } } }
+  /product/update/recommendStatus:
+    post:
+      tags: [PmsProductController]
+      summary: 批量推荐商品
+      operationId: productUpdateRecommendStatus
+      parameters:
+        - $ref: '#/components/parameters/Ids'
+        - { name: recommendStatus, in: query, required: true, schema: { type: integer } }
+      responses:
+        '200': { description: 成功, x-data-type: integer, content: { application/json: { schema: { $ref: '#/components/schemas/CommonResult' } } } }
+  /product/update/newStatus:
+    post:
+      tags: [PmsProductController]
+      summary: 批量设为新品
+      operationId: productUpdateNewStatus
+      parameters:
+        - $ref: '#/components/parameters/Ids'
+        - { name: newStatus, in: query, required: true, schema: { type: integer } }
+      responses:
+        '200': { description: 成功, x-data-type: integer, content: { application/json: { schema: { $ref: '#/components/schemas/CommonResult' } } } }
+  /product/update/deleteStatus:
+    post:
+      tags: [PmsProductController]
+      summary: 批量修改删除状态
+      operationId: productUpdateDeleteStatus
+      parameters:
+        - $ref: '#/components/parameters/Ids'
+        - { name: deleteStatus, in: query, required: true, schema: { type: integer } }
+      responses:
+        '200': { description: 成功, x-data-type: integer, content: { application/json: { schema: { $ref: '#/components/schemas/CommonResult' } } } }
+  /productCategory/create:
+    post:
+      tags: [PmsProductCategoryController]
+      summary: 添加商品分类
+      operationId: productCategoryCreate
+      requestBody: { required: true, content: { application/json: { schema: { $ref: '#/components/schemas/PmsProductCategoryParam' } } } }
+      responses:
+        '200': { description: 成功, x-data-type: integer, content: { application/json: { schema: { $ref: '#/components/schemas/CommonResult' } } } }
+  /productCategory/update/{id}:
+    post:
+      tags: [PmsProductCategoryController]
+      summary: 修改商品分类
+      operationId: productCategoryUpdate
+      parameters: [ $ref: '#/components/parameters/IdPath' ]
+      requestBody: { required: true, content: { application/json: { schema: { $ref: '#/components/schemas/PmsProductCategoryParam' } } } }
+      responses:
+        '200': { description: 成功, x-data-type: integer, content: { application/json: { schema: { $ref: '#/components/schemas/CommonResult' } } } }
+  /productCategory/list/{parentId}:
+    get:
+      tags: [PmsProductCategoryController]
+      summary: 分页查询商品分类
+      operationId: productCategoryList
+      parameters:
+        - { name: parentId, in: path, required: true, schema: { type: integer, format: int64 } }
+        - $ref: '#/components/parameters/PageSize'
+        - $ref: '#/components/parameters/PageNum'
+      responses:
+        '200': { description: 成功, x-data-type: 'CommonPage<PmsProductCategory>', content: { application/json: { schema: { $ref: '#/components/schemas/CommonResult' } } } }
+  /productCategory/{id}:
+    get:
+      tags: [PmsProductCategoryController]
+      summary: 根据id获取商品分类
+      operationId: productCategoryGetItem
+      parameters: [ $ref: '#/components/parameters/IdPath' ]
+      responses:
+        '200': { description: 成功, x-data-type: PmsProductCategory, content: { application/json: { schema: { $ref: '#/components/schemas/CommonResult' } } } }
+  /productCategory/delete/{id}:
+    post:
+      tags: [PmsProductCategoryController]
+      summary: 删除商品分类
+      operationId: productCategoryDelete
+      parameters: [ $ref: '#/components/parameters/IdPath' ]
+      responses:
+        '200': { description: 成功, x-data-type: integer, content: { application/json: { schema: { $ref: '#/components/schemas/CommonResult' } } } }
+  /productCategory/update/navStatus:
+    post:
+      tags: [PmsProductCategoryController]
+      summary: 修改导航栏显示状态
+      operationId: productCategoryUpdateNavStatus
+      parameters:
+        - $ref: '#/components/parameters/Ids'
+        - { name: navStatus, in: query, required: true, schema: { type: integer } }
+      responses:
+        '200': { description: 成功, x-data-type: integer, content: { application/json: { schema: { $ref: '#/components/schemas/CommonResult' } } } }
+  /productCategory/update/showStatus:
+    post:
+      tags: [PmsProductCategoryController]
+      summary: 修改显示状态
+      operationId: productCategoryUpdateShowStatus
+      parameters:
+        - $ref: '#/components/parameters/Ids'
+        - { name: showStatus, in: query, required: true, schema: { type: integer } }
+      responses:
+        '200': { description: 成功, x-data-type: integer, content: { application/json: { schema: { $ref: '#/components/schemas/CommonResult' } } } }
+  /productCategory/list/withChildren:
+    get:
+      tags: [PmsProductCategoryController]
+      summary: 查询所有一级分类及子分类
+      operationId: productCategoryListWithChildren
+      responses:
+        '200': { description: 成功, x-data-type: 'List<PmsProductCategoryWithChildrenItem>', content: { application/json: { schema: { $ref: '#/components/schemas/CommonResult' } } } }
+  /productAttribute/list/{cid}:
+    get:
+      tags: [PmsProductAttributeController]
+      summary: 根据分类查询属性列表或参数列表
+      operationId: productAttributeList
+      parameters:
+        - { name: cid, in: path, required: true, schema: { type: integer, format: int64 } }
+        - { name: type, in: query, required: true, schema: { type: integer, description: '0表示属性，1表示参数' } }
+        - $ref: '#/components/parameters/PageSize'
+        - $ref: '#/components/parameters/PageNum'
+      responses:
+        '200': { description: 成功, x-data-type: 'CommonPage<PmsProductAttribute>', content: { application/json: { schema: { $ref: '#/components/schemas/CommonResult' } } } }
+  /productAttribute/create:
+    post:
+      tags: [PmsProductAttributeController]
+      summary: 添加商品属性信息
+      operationId: productAttributeCreate
+      requestBody: { required: true, content: { application/json: { schema: { $ref: '#/components/schemas/PmsProductAttributeParam' } } } }
+      responses:
+        '200': { description: 成功, x-data-type: integer, content: { application/json: { schema: { $ref: '#/components/schemas/CommonResult' } } } }
+  /productAttribute/update/{id}:
+    post:
+      tags: [PmsProductAttributeController]
+      summary: 修改商品属性信息
+      operationId: productAttributeUpdate
+      parameters: [ $ref: '#/components/parameters/IdPath' ]
+      requestBody: { required: true, content: { application/json: { schema: { $ref: '#/components/schemas/PmsProductAttributeParam' } } } }
+      responses:
+        '200': { description: 成功, x-data-type: integer, content: { application/json: { schema: { $ref: '#/components/schemas/CommonResult' } } } }
+  /productAttribute/{id}:
+    get:
+      tags: [PmsProductAttributeController]
+      summary: 查询单个商品属性
+      operationId: productAttributeGetItem
+      parameters: [ $ref: '#/components/parameters/IdPath' ]
+      responses:
+        '200': { description: 成功, x-data-type: PmsProductAttribute, content: { application/json: { schema: { $ref: '#/components/schemas/CommonResult' } } } }
+  /productAttribute/delete:
+    post:
+      tags: [PmsProductAttributeController]
+      summary: 批量删除商品属性
+      operationId: productAttributeDelete
+      parameters: [ $ref: '#/components/parameters/Ids' ]
+      responses:
+        '200': { description: 成功, x-data-type: integer, content: { application/json: { schema: { $ref: '#/components/schemas/CommonResult' } } } }
+  /productAttribute/attrInfo/{productCategoryId}:
+    get:
+      tags: [PmsProductAttributeController]
+      summary: 根据商品分类的id获取商品属性及属性分类
+      operationId: productAttributeGetAttrInfo
+      parameters: [ { name: productCategoryId, in: path, required: true, schema: { type: integer, format: int64 } } ]
+      responses:
+        '200': { description: 成功, x-data-type: 'List<ProductAttrInfo>', content: { application/json: { schema: { $ref: '#/components/schemas/CommonResult' } } } }
+  /productAttribute/category/create:
+    post:
+      tags: [PmsProductAttributeCategoryController]
+      summary: 添加商品属性分类
+      operationId: productAttributeCategoryCreate
+      parameters:
+        - { name: name, in: query, required: true, schema: { type: string } }
+      responses:
+        '200': { description: 成功, x-data-type: integer, content: { application/json: { schema: { $ref: '#/components/schemas/CommonResult' } } } }
+  /productAttribute/category/update/{id}:
+    post:
+      tags: [PmsProductAttributeCategoryController]
+      summary: 修改商品属性分类
+      operationId: productAttributeCategoryUpdate
+      parameters:
+        - $ref: '#/components/parameters/IdPath'
+        - { name: name, in: query, required: true, schema: { type: string } }
+      responses:
+        '200': { description: 成功, x-data-type: integer, content: { application/json: { schema: { $ref: '#/components/schemas/CommonResult' } } } }
+  /productAttribute/category/delete/{id}:
+    get:
+      tags: [PmsProductAttributeCategoryController]
+      summary: 删除单个商品属性分类（源码使用 GET）
+      operationId: productAttributeCategoryDelete
+      parameters: [ $ref: '#/components/parameters/IdPath' ]
+      responses:
+        '200': { description: 成功, x-data-type: integer, content: { application/json: { schema: { $ref: '#/components/schemas/CommonResult' } } } }
+  /productAttribute/category/{id}:
+    get:
+      tags: [PmsProductAttributeCategoryController]
+      summary: 获取单个商品属性分类信息
+      operationId: productAttributeCategoryGetItem
+      parameters: [ $ref: '#/components/parameters/IdPath' ]
+      responses:
+        '200': { description: 成功, x-data-type: PmsProductAttributeCategory, content: { application/json: { schema: { $ref: '#/components/schemas/CommonResult' } } } }
+  /productAttribute/category/list:
+    get:
+      tags: [PmsProductAttributeCategoryController]
+      summary: 分页获取所有商品属性分类
+      operationId: productAttributeCategoryList
+      parameters:
+        - $ref: '#/components/parameters/PageSize'
+        - $ref: '#/components/parameters/PageNum'
+      responses:
+        '200': { description: 成功, x-data-type: 'CommonPage<PmsProductAttributeCategory>', content: { application/json: { schema: { $ref: '#/components/schemas/CommonResult' } } } }
+  /productAttribute/category/list/withAttr:
+    get:
+      tags: [PmsProductAttributeCategoryController]
+      summary: 获取所有商品属性分类及其下属性
+      operationId: productAttributeCategoryListWithAttr
+      responses:
+        '200': { description: 成功, x-data-type: 'List<PmsProductAttributeCategoryItem>', content: { application/json: { schema: { $ref: '#/components/schemas/CommonResult' } } } }
+  /sku/{pid}:
+    get:
+      tags: [PmsSkuStockController]
+      summary: 根据商品ID及sku编码模糊搜索sku库存
+      operationId: skuGetList
+      parameters:
+        - { name: pid, in: path, required: true, schema: { type: integer, format: int64 } }
+        - { name: keyword, in: query, required: false, schema: { type: string } }
+      responses:
+        '200': { description: 成功, x-data-type: 'List<PmsSkuStock>', content: { application/json: { schema: { $ref: '#/components/schemas/CommonResult' } } } }
+  /sku/update/{pid}:
+    post:
+      tags: [PmsSkuStockController]
+      summary: 批量更新sku库存信息
+      operationId: skuUpdate
+      parameters: [ { name: pid, in: path, required: true, schema: { type: integer, format: int64 } } ]
+      requestBody: { required: true, content: { application/json: { schema: { type: array, items: { $ref: '#/components/schemas/PmsSkuStock' } } } } }
+      responses:
+        '200': { description: 成功, x-data-type: integer, content: { application/json: { schema: { $ref: '#/components/schemas/CommonResult' } } } }
+  /coupon/create:
+    post:
+      tags: [SmsCouponController]
+      summary: 添加优惠券
+      operationId: couponCreate
+      requestBody: { required: true, content: { application/json: { schema: { $ref: '#/components/schemas/SmsCouponParam' } } } }
+      responses:
+        '200': { description: 成功, x-data-type: integer, content: { application/json: { schema: { $ref: '#/components/schemas/CommonResult' } } } }
+  /coupon/delete/{id}:
+    post:
+      tags: [SmsCouponController]
+      summary: 删除优惠券
+      operationId: couponDelete
+      parameters: [ $ref: '#/components/parameters/IdPath' ]
+      responses:
+        '200': { description: 成功, x-data-type: integer, content: { application/json: { schema: { $ref: '#/components/schemas/CommonResult' } } } }
+  /coupon/update/{id}:
+    post:
+      tags: [SmsCouponController]
+      summary: 修改优惠券
+      operationId: couponUpdate
+      parameters: [ $ref: '#/components/parameters/IdPath' ]
+      requestBody: { required: true, content: { application/json: { schema: { $ref: '#/components/schemas/SmsCouponParam' } } } }
+      responses:
+        '200': { description: 成功, x-data-type: integer, content: { application/json: { schema: { $ref: '#/components/schemas/CommonResult' } } } }
+  /coupon/list:
+    get:
+      tags: [SmsCouponController]
+      summary: 根据优惠券名称和类型分页获取优惠券列表
+      operationId: couponList
+      parameters:
+        - { name: name, in: query, required: false, schema: { type: string } }
+        - { name: type, in: query, required: false, schema: { type: integer, description: '优惠券类型；0->全场赠券；1->会员赠券；2->购物赠券；3->注册赠券' } }
+        - $ref: '#/components/parameters/PageSize'
+        - $ref: '#/components/parameters/PageNum'
+      responses:
+        '200': { description: 成功, x-data-type: 'CommonPage<SmsCoupon>', content: { application/json: { schema: { $ref: '#/components/schemas/CommonResult' } } } }
+  /coupon/{id}:
+    get:
+      tags: [SmsCouponController]
+      summary: 获取单个优惠券的详细信息
+      operationId: couponGetItem
+      parameters: [ $ref: '#/components/parameters/IdPath' ]
+      responses:
+        '200': { description: 成功, x-data-type: SmsCouponParam, content: { application/json: { schema: { $ref: '#/components/schemas/CommonResult' } } } }
+  /couponHistory/list:
+    get:
+      tags: [SmsCouponHistoryController]
+      summary: 根据优惠券id，使用状态，订单编号分页获取领取记录
+      operationId: couponHistoryList
+      parameters:
+        - { name: couponId, in: query, required: false, schema: { type: integer, format: int64 } }
+        - { name: useStatus, in: query, required: false, schema: { type: integer, description: '使用状态：0->未使用；1->已使用；2->已过期' } }
+        - { name: orderSn, in: query, required: false, schema: { type: string } }
+        - $ref: '#/components/parameters/PageSize'
+        - $ref: '#/components/parameters/PageNum'
+      responses:
+        '200': { description: 成功, x-data-type: 'CommonPage<SmsCouponHistory>', content: { application/json: { schema: { $ref: '#/components/schemas/CommonResult' } } } }
+  /flash/create:
+    post:
+      tags: [SmsFlashPromotionController]
+      summary: 添加活动
+      operationId: flashCreate
+      requestBody: { required: true, content: { application/json: { schema: { $ref: '#/components/schemas/SmsFlashPromotion' } } } }
+      responses:
+        '200': { description: 成功, x-data-type: integer, content: { application/json: { schema: { $ref: '#/components/schemas/CommonResult' } } } }
+  /flash/update/{id}:
+    post:
+      tags: [SmsFlashPromotionController]
+      summary: 编辑活动
+      operationId: flashUpdate
+      parameters: [ $ref: '#/components/parameters/IdPath' ]
+      requestBody: { required: true, content: { application/json: { schema: { $ref: '#/components/schemas/SmsFlashPromotion' } } } }
+      responses:
+        '200': { description: 成功, x-data-type: integer, content: { application/json: { schema: { $ref: '#/components/schemas/CommonResult' } } } }
+  /flash/delete/{id}:
+    post:
+      tags: [SmsFlashPromotionController]
+      summary: 删除活动
+      operationId: flashDelete
+      parameters: [ $ref: '#/components/parameters/IdPath' ]
+      responses:
+        '200': { description: 成功, x-data-type: integer, content: { application/json: { schema: { $ref: '#/components/schemas/CommonResult' } } } }
+  /flash/update/status/{id}:
+    post:
+      tags: [SmsFlashPromotionController]
+      summary: 修改上下线状态
+      operationId: flashUpdateStatus
+      parameters:
+        - $ref: '#/components/parameters/IdPath'
+        - { name: status, in: query, required: false, schema: { type: integer, description: '上下线状态：0->下线；1->上线（源码未声明 required，按请求参数处理）' } }
+      responses:
+        '200': { description: 成功, x-data-type: integer, content: { application/json: { schema: { $ref: '#/components/schemas/CommonResult' } } } }
+  /flash/{id}:
+    get:
+      tags: [SmsFlashPromotionController]
+      summary: 获取活动详情
+      operationId: flashGetItem
+      parameters: [ $ref: '#/components/parameters/IdPath' ]
+      responses:
+        '200': { description: 成功, x-data-type: SmsFlashPromotion, content: { application/json: { schema: { $ref: '#/components/schemas/CommonResult' } } } }
+  /flash/list:
+    get:
+      tags: [SmsFlashPromotionController]
+      summary: 根据活动名称分页查询
+      operationId: flashList
+      parameters:
+        - { name: keyword, in: query, required: false, schema: { type: string } }
+        - $ref: '#/components/parameters/PageSize'
+        - $ref: '#/components/parameters/PageNum'
+      responses:
+        '200': { description: 成功, x-data-type: 'CommonPage<SmsFlashPromotion>', content: { application/json: { schema: { $ref: '#/components/schemas/CommonResult' } } } }
+  /flashSession/create:
+    post:
+      tags: [SmsFlashPromotionSessionController]
+      summary: 添加场次
+      operationId: flashSessionCreate
+      requestBody: { required: true, content: { application/json: { schema: { $ref: '#/components/schemas/SmsFlashPromotionSession' } } } }
+      responses:
+        '200': { description: 成功, x-data-type: integer, content: { application/json: { schema: { $ref: '#/components/schemas/CommonResult' } } } }
+  /flashSession/update/{id}:
+    post:
+      tags: [SmsFlashPromotionSessionController]
+      summary: 修改场次
+      operationId: flashSessionUpdate
+      parameters: [ $ref: '#/components/parameters/IdPath' ]
+      requestBody: { required: true, content: { application/json: { schema: { $ref: '#/components/schemas/SmsFlashPromotionSession' } } } }
+      responses:
+        '200': { description: 成功, x-data-type: integer, content: { application/json: { schema: { $ref: '#/components/schemas/CommonResult' } } } }
+  /flashSession/update/status/{id}:
+    post:
+      tags: [SmsFlashPromotionSessionController]
+      summary: 修改启用状态
+      operationId: flashSessionUpdateStatus
+      parameters:
+        - $ref: '#/components/parameters/IdPath'
+        - { name: status, in: query, required: false, schema: { type: integer, description: '启用状态：0->不启用；1->启用' } }
+      responses:
+        '200': { description: 成功, x-data-type: integer, content: { application/json: { schema: { $ref: '#/components/schemas/CommonResult' } } } }
+  /flashSession/delete/{id}:
+    post:
+      tags: [SmsFlashPromotionSessionController]
+      summary: 删除场次
+      operationId: flashSessionDelete
+      parameters: [ $ref: '#/components/parameters/IdPath' ]
+      responses:
+        '200': { description: 成功, x-data-type: integer, content: { application/json: { schema: { $ref: '#/components/schemas/CommonResult' } } } }
+  /flashSession/{id}:
+    get:
+      tags: [SmsFlashPromotionSessionController]
+      summary: 获取场次详情
+      operationId: flashSessionGetItem
+      parameters: [ $ref: '#/components/parameters/IdPath' ]
+      responses:
+        '200': { description: 成功, x-data-type: SmsFlashPromotionSession, content: { application/json: { schema: { $ref: '#/components/schemas/CommonResult' } } } }
+  /flashSession/list:
+    get:
+      tags: [SmsFlashPromotionSessionController]
+      summary: 获取全部场次
+      operationId: flashSessionList
+      responses:
+        '200': { description: 成功, x-data-type: 'List<SmsFlashPromotionSession>', content: { application/json: { schema: { $ref: '#/components/schemas/CommonResult' } } } }
+  /flashSession/selectList:
+    get:
+      tags: [SmsFlashPromotionSessionController]
+      summary: 获取全部可选场次及其数量
+      operationId: flashSessionSelectList
+      parameters:
+        - { name: flashPromotionId, in: query, required: false, schema: { type: integer, format: int64 } }
+      responses:
+        '200': { description: 成功, x-data-type: 'List<SmsFlashPromotionSessionDetail>', content: { application/json: { schema: { $ref: '#/components/schemas/CommonResult' } } } }
+  /flashProductRelation/create:
+    post:
+      tags: [SmsFlashPromotionProductRelationController]
+      summary: 批量选择商品添加关联
+      operationId: flashProductRelationCreate
+      requestBody: { required: true, content: { application/json: { schema: { type: array, items: { $ref: '#/components/schemas/SmsFlashPromotionProductRelation' } } } } }
+      responses:
+        '200': { description: 成功, x-data-type: integer, content: { application/json: { schema: { $ref: '#/components/schemas/CommonResult' } } } }
+  /flashProductRelation/update/{id}:
+    post:
+      tags: [SmsFlashPromotionProductRelationController]
+      summary: 修改关联信息
+      operationId: flashProductRelationUpdate
+      parameters: [ $ref: '#/components/parameters/IdPath' ]
+      requestBody: { required: true, content: { application/json: { schema: { $ref: '#/components/schemas/SmsFlashPromotionProductRelation' } } } }
+      responses:
+        '200': { description: 成功, x-data-type: integer, content: { application/json: { schema: { $ref: '#/components/schemas/CommonResult' } } } }
+  /flashProductRelation/delete/{id}:
+    post:
+      tags: [SmsFlashPromotionProductRelationController]
+      summary: 删除关联
+      operationId: flashProductRelationDelete
+      parameters: [ $ref: '#/components/parameters/IdPath' ]
+      responses:
+        '200': { description: 成功, x-data-type: integer, content: { application/json: { schema: { $ref: '#/components/schemas/CommonResult' } } } }
+  /flashProductRelation/{id}:
+    get:
+      tags: [SmsFlashPromotionProductRelationController]
+      summary: 获取关联商品促销信息
+      operationId: flashProductRelationGetItem
+      parameters: [ $ref: '#/components/parameters/IdPath' ]
+      responses:
+        '200': { description: 成功, x-data-type: SmsFlashPromotionProductRelation, content: { application/json: { schema: { $ref: '#/components/schemas/CommonResult' } } } }
+  /flashProductRelation/list:
+    get:
+      tags: [SmsFlashPromotionProductRelationController]
+      summary: 分页查询不同场次关联及商品信息
+      operationId: flashProductRelationList
+      parameters:
+        - { name: flashPromotionId, in: query, required: true, schema: { type: integer, format: int64 } }
+        - { name: flashPromotionSessionId, in: query, required: true, schema: { type: integer, format: int64 } }
+        - $ref: '#/components/parameters/PageSize'
+        - $ref: '#/components/parameters/PageNum'
+      responses:
+        '200': { description: 成功, x-data-type: 'CommonPage<SmsFlashPromotionProduct>', content: { application/json: { schema: { $ref: '#/components/schemas/CommonResult' } } } }
+  /home/advertise/create:
+    post:
+      tags: [SmsHomeAdvertiseController]
+      summary: 添加广告
+      operationId: homeAdvertiseCreate
+      requestBody: { required: true, content: { application/json: { schema: { $ref: '#/components/schemas/SmsHomeAdvertise' } } } }
+      responses:
+        '200': { description: 成功, x-data-type: integer, content: { application/json: { schema: { $ref: '#/components/schemas/CommonResult' } } } }
+  /home/advertise/delete:
+    post:
+      tags: [SmsHomeAdvertiseController]
+      summary: 删除广告
+      operationId: homeAdvertiseDelete
+      parameters: [ $ref: '#/components/parameters/Ids' ]
+      responses:
+        '200': { description: 成功, x-data-type: integer, content: { application/json: { schema: { $ref: '#/components/schemas/CommonResult' } } } }
+  /home/advertise/update/status/{id}:
+    post:
+      tags: [SmsHomeAdvertiseController]
+      summary: 修改上下线状态
+      operationId: homeAdvertiseUpdateStatus
+      parameters:
+        - $ref: '#/components/parameters/IdPath'
+        - { name: status, in: query, required: false, schema: { type: integer, description: '上下线状态：0->下线；1->上线' } }
+      responses:
+        '200': { description: 成功, x-data-type: integer, content: { application/json: { schema: { $ref: '#/components/schemas/CommonResult' } } } }
+  /home/advertise/{id}:
+    get:
+      tags: [SmsHomeAdvertiseController]
+      summary: 获取广告详情
+      operationId: homeAdvertiseGetItem
+      parameters: [ $ref: '#/components/parameters/IdPath' ]
+      responses:
+        '200': { description: 成功, x-data-type: SmsHomeAdvertise, content: { application/json: { schema: { $ref: '#/components/schemas/CommonResult' } } } }
+  /home/advertise/update/{id}:
+    post:
+      tags: [SmsHomeAdvertiseController]
+      summary: 修改广告
+      operationId: homeAdvertiseUpdate
+      parameters: [ $ref: '#/components/parameters/IdPath' ]
+      requestBody: { required: true, content: { application/json: { schema: { $ref: '#/components/schemas/SmsHomeAdvertise' } } } }
+      responses:
+        '200': { description: 成功, x-data-type: integer, content: { application/json: { schema: { $ref: '#/components/schemas/CommonResult' } } } }
+  /home/advertise/list:
+    get:
+      tags: [SmsHomeAdvertiseController]
+      summary: 分页查询广告
+      operationId: homeAdvertiseList
+      parameters:
+        - { name: name, in: query, required: false, schema: { type: string } }
+        - { name: type, in: query, required: false, schema: { type: integer, description: '轮播位置：0->PC首页轮播；1->app首页轮播' } }
+        - { name: endTime, in: query, required: false, schema: { type: string, description: 到期时间（字符串） } }
+        - $ref: '#/components/parameters/PageSize'
+        - $ref: '#/components/parameters/PageNum'
+      responses:
+        '200': { description: 成功, x-data-type: 'CommonPage<SmsHomeAdvertise>', content: { application/json: { schema: { $ref: '#/components/schemas/CommonResult' } } } }
+  /home/brand/create:
+    post:
+      tags: [SmsHomeBrandController]
+      summary: 添加首页推荐品牌
+      operationId: homeBrandCreate
+      requestBody: { required: true, content: { application/json: { schema: { type: array, items: { $ref: '#/components/schemas/SmsHomeBrand' } } } } }
+      responses:
+        '200': { description: 成功, x-data-type: integer, content: { application/json: { schema: { $ref: '#/components/schemas/CommonResult' } } } }
+  /home/brand/update/sort/{id}:
+    post:
+      tags: [SmsHomeBrandController]
+      summary: 修改推荐品牌排序
+      operationId: homeBrandUpdateSort
+      parameters:
+        - $ref: '#/components/parameters/IdPath'
+        - { name: sort, in: query, required: false, schema: { type: integer } }
+      responses:
+        '200': { description: 成功, x-data-type: integer, content: { application/json: { schema: { $ref: '#/components/schemas/CommonResult' } } } }
+  /home/brand/delete:
+    post:
+      tags: [SmsHomeBrandController]
+      summary: 批量删除推荐品牌
+      operationId: homeBrandDelete
+      parameters: [ $ref: '#/components/parameters/Ids' ]
+      responses:
+        '200': { description: 成功, x-data-type: integer, content: { application/json: { schema: { $ref: '#/components/schemas/CommonResult' } } } }
+  /home/brand/update/recommendStatus:
+    post:
+      tags: [SmsHomeBrandController]
+      summary: 批量修改推荐品牌状态
+      operationId: homeBrandUpdateRecommendStatus
+      parameters:
+        - $ref: '#/components/parameters/Ids'
+        - { name: recommendStatus, in: query, required: true, schema: { type: integer } }
+      responses:
+        '200': { description: 成功, x-data-type: integer, content: { application/json: { schema: { $ref: '#/components/schemas/CommonResult' } } } }
+  /home/brand/list:
+    get:
+      tags: [SmsHomeBrandController]
+      summary: 分页查询推荐品牌
+      operationId: homeBrandList
+      parameters:
+        - { name: brandName, in: query, required: false, schema: { type: string } }
+        - { name: recommendStatus, in: query, required: false, schema: { type: integer } }
+        - $ref: '#/components/parameters/PageSize'
+        - $ref: '#/components/parameters/PageNum'
+      responses:
+        '200': { description: 成功, x-data-type: 'CommonPage<SmsHomeBrand>', content: { application/json: { schema: { $ref: '#/components/schemas/CommonResult' } } } }
+  /home/newProduct/create:
+    post:
+      tags: [SmsHomeNewProductController]
+      summary: 添加首页新品
+      operationId: homeNewProductCreate
+      requestBody: { required: true, content: { application/json: { schema: { type: array, items: { $ref: '#/components/schemas/SmsHomeNewProduct' } } } } }
+      responses:
+        '200': { description: 成功, x-data-type: integer, content: { application/json: { schema: { $ref: '#/components/schemas/CommonResult' } } } }
+  /home/newProduct/update/sort/{id}:
+    post:
+      tags: [SmsHomeNewProductController]
+      summary: 修改首页新品排序
+      operationId: homeNewProductUpdateSort
+      parameters:
+        - $ref: '#/components/parameters/IdPath'
+        - { name: sort, in: query, required: false, schema: { type: integer } }
+      responses:
+        '200': { description: 成功, x-data-type: integer, content: { application/json: { schema: { $ref: '#/components/schemas/CommonResult' } } } }
+  /home/newProduct/delete:
+    post:
+      tags: [SmsHomeNewProductController]
+      summary: 批量删除首页新品
+      operationId: homeNewProductDelete
+      parameters: [ $ref: '#/components/parameters/Ids' ]
+      responses:
+        '200': { description: 成功, x-data-type: integer, content: { application/json: { schema: { $ref: '#/components/schemas/CommonResult' } } } }
+  /home/newProduct/update/recommendStatus:
+    post:
+      tags: [SmsHomeNewProductController]
+      summary: 批量修改首页新品状态
+      operationId: homeNewProductUpdateRecommendStatus
+      parameters:
+        - $ref: '#/components/parameters/Ids'
+        - { name: recommendStatus, in: query, required: true, schema: { type: integer } }
+      responses:
+        '200': { description: 成功, x-data-type: integer, content: { application/json: { schema: { $ref: '#/components/schemas/CommonResult' } } } }
+  /home/newProduct/list:
+    get:
+      tags: [SmsHomeNewProductController]
+      summary: 分页查询首页新品
+      operationId: homeNewProductList
+      parameters:
+        - { name: productName, in: query, required: false, schema: { type: string } }
+        - { name: recommendStatus, in: query, required: false, schema: { type: integer } }
+        - $ref: '#/components/parameters/PageSize'
+        - $ref: '#/components/parameters/PageNum'
+      responses:
+        '200': { description: 成功, x-data-type: 'CommonPage<SmsHomeNewProduct>', content: { application/json: { schema: { $ref: '#/components/schemas/CommonResult' } } } }
+  /home/recommendProduct/create:
+    post:
+      tags: [SmsHomeRecommendProductController]
+      summary: 添加首页推荐
+      operationId: homeRecommendProductCreate
+      requestBody: { required: true, content: { application/json: { schema: { type: array, items: { $ref: '#/components/schemas/SmsHomeRecommendProduct' } } } } }
+      responses:
+        '200': { description: 成功, x-data-type: integer, content: { application/json: { schema: { $ref: '#/components/schemas/CommonResult' } } } }
+  /home/recommendProduct/update/sort/{id}:
+    post:
+      tags: [SmsHomeRecommendProductController]
+      summary: 修改推荐排序
+      operationId: homeRecommendProductUpdateSort
+      parameters:
+        - $ref: '#/components/parameters/IdPath'
+        - { name: sort, in: query, required: false, schema: { type: integer } }
+      responses:
+        '200': { description: 成功, x-data-type: integer, content: { application/json: { schema: { $ref: '#/components/schemas/CommonResult' } } } }
+  /home/recommendProduct/delete:
+    post:
+      tags: [SmsHomeRecommendProductController]
+      summary: 批量删除推荐
+      operationId: homeRecommendProductDelete
+      parameters: [ $ref: '#/components/parameters/Ids' ]
+      responses:
+        '200': { description: 成功, x-data-type: integer, content: { application/json: { schema: { $ref: '#/components/schemas/CommonResult' } } } }
+  /home/recommendProduct/update/recommendStatus:
+    post:
+      tags: [SmsHomeRecommendProductController]
+      summary: 批量修改推荐状态
+      operationId: homeRecommendProductUpdateRecommendStatus
+      parameters:
+        - $ref: '#/components/parameters/Ids'
+        - { name: recommendStatus, in: query, required: true, schema: { type: integer } }
+      responses:
+        '200': { description: 成功, x-data-type: integer, content: { application/json: { schema: { $ref: '#/components/schemas/CommonResult' } } } }
+  /home/recommendProduct/list:
+    get:
+      tags: [SmsHomeRecommendProductController]
+      summary: 分页查询推荐
+      operationId: homeRecommendProductList
+      parameters:
+        - { name: productName, in: query, required: false, schema: { type: string } }
+        - { name: recommendStatus, in: query, required: false, schema: { type: integer } }
+        - $ref: '#/components/parameters/PageSize'
+        - $ref: '#/components/parameters/PageNum'
+      responses:
+        '200': { description: 成功, x-data-type: 'CommonPage<SmsHomeRecommendProduct>', content: { application/json: { schema: { $ref: '#/components/schemas/CommonResult' } } } }
+  /home/recommendSubject/create:
+    post:
+      tags: [SmsHomeRecommendSubjectController]
+      summary: 添加首页推荐专题
+      operationId: homeRecommendSubjectCreate
+      requestBody: { required: true, content: { application/json: { schema: { type: array, items: { $ref: '#/components/schemas/SmsHomeRecommendSubject' } } } } }
+      responses:
+        '200': { description: 成功, x-data-type: integer, content: { application/json: { schema: { $ref: '#/components/schemas/CommonResult' } } } }
+  /home/recommendSubject/update/sort/{id}:
+    post:
+      tags: [SmsHomeRecommendSubjectController]
+      summary: 修改推荐排序
+      operationId: homeRecommendSubjectUpdateSort
+      parameters:
+        - $ref: '#/components/parameters/IdPath'
+        - { name: sort, in: query, required: false, schema: { type: integer } }
+      responses:
+        '200': { description: 成功, x-data-type: integer, content: { application/json: { schema: { $ref: '#/components/schemas/CommonResult' } } } }
+  /home/recommendSubject/delete:
+    post:
+      tags: [SmsHomeRecommendSubjectController]
+      summary: 批量删除推荐
+      operationId: homeRecommendSubjectDelete
+      parameters: [ $ref: '#/components/parameters/Ids' ]
+      responses:
+        '200': { description: 成功, x-data-type: integer, content: { application/json: { schema: { $ref: '#/components/schemas/CommonResult' } } } }
+  /home/recommendSubject/update/recommendStatus:
+    post:
+      tags: [SmsHomeRecommendSubjectController]
+      summary: 批量修改推荐状态
+      operationId: homeRecommendSubjectUpdateRecommendStatus
+      parameters:
+        - $ref: '#/components/parameters/Ids'
+        - { name: recommendStatus, in: query, required: true, schema: { type: integer } }
+      responses:
+        '200': { description: 成功, x-data-type: integer, content: { application/json: { schema: { $ref: '#/components/schemas/CommonResult' } } } }
+  /home/recommendSubject/list:
+    get:
+      tags: [SmsHomeRecommendSubjectController]
+      summary: 分页查询推荐专题
+      operationId: homeRecommendSubjectList
+      parameters:
+        - { name: subjectName, in: query, required: false, schema: { type: string } }
+        - { name: recommendStatus, in: query, required: false, schema: { type: integer } }
+        - $ref: '#/components/parameters/PageSize'
+        - $ref: '#/components/parameters/PageNum'
+      responses:
+        '200': { description: 成功, x-data-type: 'CommonPage<SmsHomeRecommendSubject>', content: { application/json: { schema: { $ref: '#/components/schemas/CommonResult' } } } }
+  /order/list:
+    get:
+      tags: [OmsOrderController]
+      summary: 查询订单
+      operationId: orderList
+      parameters:
+        - { name: orderSn, in: query, required: false, schema: { type: string, description: 订单编号 } }
+        - { name: receiverKeyword, in: query, required: false, schema: { type: string, description: 收货人姓名或号码 } }
+        - { name: status, in: query, required: false, schema: { type: integer, description: '订单状态：0->待付款；1->待发货；2->已发货；3->已完成；4->已关闭；5->无效订单' } }
+        - { name: orderType, in: query, required: false, schema: { type: integer, description: '订单类型：0->正常订单；1->秒杀订单' } }
+        - { name: sourceType, in: query, required: false, schema: { type: integer, description: '订单来源：0->PC订单；1->app订单' } }
+        - { name: createTime, in: query, required: false, schema: { type: string, description: 订单提交时间 } }
+        - $ref: '#/components/parameters/PageSize'
+        - $ref: '#/components/parameters/PageNum'
+      responses:
+        '200': { description: 成功, x-data-type: 'CommonPage<OmsOrder>', content: { application/json: { schema: { $ref: '#/components/schemas/CommonResult' } } } }
+  /order/update/delivery:
+    post:
+      tags: [OmsOrderController]
+      summary: 批量发货
+      operationId: orderDelivery
+      requestBody: { required: true, content: { application/json: { schema: { type: array, items: { $ref: '#/components/schemas/OmsOrderDeliveryParam' } } } } }
+      responses:
+        '200': { description: 成功, x-data-type: integer, content: { application/json: { schema: { $ref: '#/components/schemas/CommonResult' } } } }
+  /order/update/close:
+    post:
+      tags: [OmsOrderController]
+      summary: 批量关闭订单
+      operationId: orderClose
+      parameters:
+        - $ref: '#/components/parameters/Ids'
+        - { name: note, in: query, required: true, schema: { type: string, description: 操作备注 } }
+      responses:
+        '200': { description: 成功, x-data-type: integer, content: { application/json: { schema: { $ref: '#/components/schemas/CommonResult' } } } }
+  /order/delete:
+    post:
+      tags: [OmsOrderController]
+      summary: 批量删除订单
+      operationId: orderDelete
+      parameters: [ $ref: '#/components/parameters/Ids' ]
+      responses:
+        '200': { description: 成功, x-data-type: integer, content: { application/json: { schema: { $ref: '#/components/schemas/CommonResult' } } } }
+  /order/{id}:
+    get:
+      tags: [OmsOrderController]
+      summary: 获取订单详情：订单信息、商品信息、操作记录
+      operationId: orderDetail
+      parameters: [ $ref: '#/components/parameters/IdPath' ]
+      responses:
+        '200': { description: 成功, x-data-type: OmsOrderDetail, content: { application/json: { schema: { $ref: '#/components/schemas/CommonResult' } } } }
+  /order/update/receiverInfo:
+    post:
+      tags: [OmsOrderController]
+      summary: 修改收货人信息
+      operationId: orderUpdateReceiverInfo
+      requestBody: { required: true, content: { application/json: { schema: { $ref: '#/components/schemas/OmsReceiverInfoParam' } } } }
+      responses:
+        '200': { description: 成功, x-data-type: integer, content: { application/json: { schema: { $ref: '#/components/schemas/CommonResult' } } } }
+  /order/update/moneyInfo:
+    post:
+      tags: [OmsOrderController]
+      summary: 修改订单费用信息
+      operationId: orderUpdateMoneyInfo
+      requestBody: { required: true, content: { application/json: { schema: { $ref: '#/components/schemas/OmsMoneyInfoParam' } } } }
+      responses:
+        '200': { description: 成功, x-data-type: integer, content: { application/json: { schema: { $ref: '#/components/schemas/CommonResult' } } } }
+  /order/update/note:
+    post:
+      tags: [OmsOrderController]
+      summary: 备注订单
+      operationId: orderUpdateNote
+      parameters:
+        - { name: id, in: query, required: true, schema: { type: integer, format: int64 } }
+        - { name: note, in: query, required: true, schema: { type: string } }
+        - { name: status, in: query, required: true, schema: { type: integer, description: '订单状态：0->待付款；1->待发货；2->已发货；3->已完成；4->已关闭；5->无效订单' } }
+      responses:
+        '200': { description: 成功, x-data-type: integer, content: { application/json: { schema: { $ref: '#/components/schemas/CommonResult' } } } }
+  /returnApply/list:
+    get:
+      tags: [OmsOrderReturnApplyController]
+      summary: 分页查询退货申请
+      operationId: returnApplyList
+      parameters:
+        - { name: id, in: query, required: false, schema: { type: integer, format: int64, description: 服务单号 } }
+        - { name: receiverKeyword, in: query, required: false, schema: { type: string, description: 收货人姓名或号码 } }
+        - { name: status, in: query, required: false, schema: { type: integer, description: '申请状态：0->待处理；1->退货中；2->已完成；3->已拒绝' } }
+        - { name: createTime, in: query, required: false, schema: { type: string, description: 申请时间 } }
+        - { name: handleMan, in: query, required: false, schema: { type: string, description: 处理人员 } }
+        - { name: handleTime, in: query, required: false, schema: { type: string, description: 处理时间 } }
+        - $ref: '#/components/parameters/PageSize'
+        - $ref: '#/components/parameters/PageNum'
+      responses:
+        '200': { description: 成功, x-data-type: 'CommonPage<OmsOrderReturnApply>', content: { application/json: { schema: { $ref: '#/components/schemas/CommonResult' } } } }
+  /returnApply/delete:
+    post:
+      tags: [OmsOrderReturnApplyController]
+      summary: 批量删除退货申请
+      operationId: returnApplyDelete
+      parameters: [ $ref: '#/components/parameters/Ids' ]
+      responses:
+        '200': { description: 成功, x-data-type: integer, content: { application/json: { schema: { $ref: '#/components/schemas/CommonResult' } } } }
+  /returnApply/{id}:
+    get:
+      tags: [OmsOrderReturnApplyController]
+      summary: 获取退货申请详情
+      operationId: returnApplyGetItem
+      parameters: [ $ref: '#/components/parameters/IdPath' ]
+      responses:
+        '200': { description: 成功, x-data-type: OmsOrderReturnApplyResult, content: { application/json: { schema: { $ref: '#/components/schemas/CommonResult' } } } }
+  /returnApply/update/status/{id}:
+    post:
+      tags: [OmsOrderReturnApplyController]
+      summary: 修改退货申请状态
+      operationId: returnApplyUpdateStatus
+      parameters: [ $ref: '#/components/parameters/IdPath' ]
+      requestBody: { required: true, content: { application/json: { schema: { $ref: '#/components/schemas/OmsUpdateStatusParam' } } } }
+      responses:
+        '200': { description: 成功, x-data-type: integer, content: { application/json: { schema: { $ref: '#/components/schemas/CommonResult' } } } }
+  /returnReason/create:
+    post:
+      tags: [OmsOrderReturnReasonController]
+      summary: 添加退货原因
+      operationId: returnReasonCreate
+      requestBody: { required: true, content: { application/json: { schema: { $ref: '#/components/schemas/OmsOrderReturnReason' } } } }
+      responses:
+        '200': { description: 成功, x-data-type: integer, content: { application/json: { schema: { $ref: '#/components/schemas/CommonResult' } } } }
+  /returnReason/update/{id}:
+    post:
+      tags: [OmsOrderReturnReasonController]
+      summary: 修改退货原因
+      operationId: returnReasonUpdate
+      parameters: [ $ref: '#/components/parameters/IdPath' ]
+      requestBody: { required: true, content: { application/json: { schema: { $ref: '#/components/schemas/OmsOrderReturnReason' } } } }
+      responses:
+        '200': { description: 成功, x-data-type: integer, content: { application/json: { schema: { $ref: '#/components/schemas/CommonResult' } } } }
+  /returnReason/delete:
+    post:
+      tags: [OmsOrderReturnReasonController]
+      summary: 批量删除退货原因
+      operationId: returnReasonDelete
+      parameters: [ $ref: '#/components/parameters/Ids' ]
+      responses:
+        '200': { description: 成功, x-data-type: integer, content: { application/json: { schema: { $ref: '#/components/schemas/CommonResult' } } } }
+  /returnReason/list:
+    get:
+      tags: [OmsOrderReturnReasonController]
+      summary: 分页查询退货原因
+      operationId: returnReasonList
+      parameters:
+        - $ref: '#/components/parameters/PageSize'
+        - $ref: '#/components/parameters/PageNum'
+      responses:
+        '200': { description: 成功, x-data-type: 'CommonPage<OmsOrderReturnReason>', content: { application/json: { schema: { $ref: '#/components/schemas/CommonResult' } } } }
+  /returnReason/{id}:
+    get:
+      tags: [OmsOrderReturnReasonController]
+      summary: 获取单个退货原因详情信息
+      operationId: returnReasonGetItem
+      parameters: [ $ref: '#/components/parameters/IdPath' ]
+      responses:
+        '200': { description: 成功, x-data-type: OmsOrderReturnReason, content: { application/json: { schema: { $ref: '#/components/schemas/CommonResult' } } } }
+  /returnReason/update/status:
+    post:
+      tags: [OmsOrderReturnReasonController]
+      summary: 修改退货原因启用状态
+      operationId: returnReasonUpdateStatus
+      parameters:
+        - { name: status, in: query, required: true, schema: { type: integer, description: '状态：0->不启用；1->启用' } }
+        - $ref: '#/components/parameters/Ids'
+      responses:
+        '200': { description: 成功, x-data-type: integer, content: { application/json: { schema: { $ref: '#/components/schemas/CommonResult' } } } }
+  /orderSetting/{id}:
+    get:
+      tags: [OmsOrderSettingController]
+      summary: 获取指定订单设置
+      operationId: orderSettingGetItem
+      parameters: [ $ref: '#/components/parameters/IdPath' ]
+      responses:
+        '200': { description: 成功, x-data-type: OmsOrderSetting, content: { application/json: { schema: { $ref: '#/components/schemas/CommonResult' } } } }
+  /orderSetting/update/{id}:
+    post:
+      tags: [OmsOrderSettingController]
+      summary: 修改指定订单设置
+      operationId: orderSettingUpdate
+      parameters: [ $ref: '#/components/parameters/IdPath' ]
+      requestBody: { required: true, content: { application/json: { schema: { $ref: '#/components/schemas/OmsOrderSetting' } } } }
+      responses:
+        '200': { description: 成功, x-data-type: integer, content: { application/json: { schema: { $ref: '#/components/schemas/CommonResult' } } } }
+  /companyAddress/list:
+    get:
+      tags: [OmsCompanyAddressController]
+      summary: 获取所有收货地址
+      operationId: companyAddressList
+      responses:
+        '200': { description: 成功, x-data-type: 'List<OmsCompanyAddress>', content: { application/json: { schema: { $ref: '#/components/schemas/CommonResult' } } } }
+  /subject/listAll:
+    get:
+      tags: [CmsSubjectController]
+      summary: 获取全部商品专题
+      operationId: subjectListAll
+      responses:
+        '200': { description: 成功, x-data-type: 'List<CmsSubject>', content: { application/json: { schema: { $ref: '#/components/schemas/CommonResult' } } } }
+  /subject/list:
+    get:
+      tags: [CmsSubjectController]
+      summary: 根据专题名称分页获取商品专题
+      operationId: subjectList
+      parameters:
+        - { name: keyword, in: query, required: false, schema: { type: string } }
+        - $ref: '#/components/parameters/PageNum'
+        - $ref: '#/components/parameters/PageSize'
+      responses:
+        '200': { description: 成功, x-data-type: 'CommonPage<CmsSubject>', content: { application/json: { schema: { $ref: '#/components/schemas/CommonResult' } } } }
+  /prefrenceArea/listAll:
+    get:
+      tags: [CmsPrefrenceAreaController]
+      summary: 获取所有商品优选
+      operationId: prefrenceAreaListAll
+      responses:
+        '200': { description: 成功, x-data-type: 'List<CmsPrefrenceArea>', content: { application/json: { schema: { $ref: '#/components/schemas/CommonResult' } } } }
+  /minio/upload:
+    post:
+      tags: [MinioController]
+      summary: 文件上传
+      operationId: minioUpload
+      requestBody: { required: true, content: { multipart/form-data: { schema: { type: object, properties: { file: { type: string, format: binary } }, required: [file] } } } }
+      responses:
+        '200': { description: 成功返回文件地址与名称, x-data-type: MinioUploadDto, content: { application/json: { schema: { $ref: '#/components/schemas/CommonResult' } } } }
+  /minio/delete:
+    post:
+      tags: [MinioController]
+      summary: 文件删除
+      operationId: minioDelete
+      parameters:
+        - { name: objectName, in: query, required: true, schema: { type: string } }
+      responses:
+        '200': { description: 成功, x-data-type: 'null', content: { application/json: { schema: { $ref: '#/components/schemas/CommonResult' } } } }
+  /aliyun/oss/policy:
+    get:
+      tags: [OssController]
+      summary: Oss上传签名生成
+      operationId: ossPolicy
+      responses:
+        '200': { description: 成功, x-data-type: OssPolicyResult, content: { application/json: { schema: { $ref: '#/components/schemas/CommonResult' } } } }
+  /aliyun/oss/callback:
+    post:
+      tags: [OssController]
+      summary: Oss上传成功回调
+      operationId: ossCallback
+      responses:
+        '200': { description: 成功, x-data-type: OssCallbackResult, content: { application/json: { schema: { $ref: '#/components/schemas/CommonResult' } } } }
+components:
+  securitySchemes:
+    bearerAuth: { type: http, scheme: bearer, bearerFormat: JWT, description: 登录接口返回 token，请求头格式 Authorization Bearer 加空格加 token }
+  parameters:
+    PageSize: { name: pageSize, in: query, required: false, schema: { type: integer, default: 5 }, description: 每页数量，默认 5 }
+    PageNum: { name: pageNum, in: query, required: false, schema: { type: integer, default: 1 }, description: 页码，默认 1 }
+    IdPath: { name: id, in: path, required: true, schema: { type: integer, format: int64 }, description: 主键 id }
+    Ids: { name: ids, in: query, required: true, schema: { type: array, items: { type: integer, format: int64 } }, description: 主键 id 数组，形如 ids=1,2 }
+  schemas:
+    CommonResult:
+      type: object
+      description: 通用返回封装
+      properties:
+        code: { type: integer, format: int64, example: 200, description: 200 成功；404 失败；401 未登录；403 未授权 }
+        message: { type: string, example: 操作成功 }
+        data: { nullable: true, description: 业务数据，具体类型见接口响应的 x-data-type }
+      required: [code, message]
+    CommonPage:
+      type: object
+      description: 通用分页封装
+      properties:
+        pageNum: { type: integer, description: 当前页码 }
+        pageSize: { type: integer, description: 每页数量 }
+        totalPage: { type: integer, description: 总页数 }
+        total: { type: integer, format: int64, description: 总条数 }
+        list: { type: array, items: {}, description: 分页数据，元素类型见接口响应 x-data-type }
+    UmsAdminParam:
+      type: object
+      properties: { username: { type: string }, password: { type: string }, icon: { type: string }, email: { type: string }, nickName: { type: string }, note: { type: string } }
+      required: [username, password]
+    UmsAdminLoginParam:
+      type: object
+      properties: { username: { type: string }, password: { type: string } }
+      required: [username, password]
+    UpdateAdminPasswordParam:
+      type: object
+      properties: { username: { type: string }, oldPassword: { type: string }, newPassword: { type: string } }
+      required: [username, oldPassword, newPassword]
+    UmsAdmin:
+      type: object
+      properties: { id: { type: integer, format: int64 }, username: { type: string }, password: { type: string }, icon: { type: string }, email: { type: string }, nickName: { type: string }, note: { type: string }, createTime: { type: string, format: date-time }, loginTime: { type: string, format: date-time }, status: { type: integer, description: '帐号启用状态：0->禁用；1->启用' } }
+    UmsRole:
+      type: object
+      properties: { id: { type: integer, format: int64 }, name: { type: string }, description: { type: string }, adminCount: { type: integer }, createTime: { type: string, format: date-time }, status: { type: integer, description: '启用状态：0->禁用；1->启用' }, sort: { type: integer } }
+    UmsMenu:
+      type: object
+      properties: { id: { type: integer, format: int64 }, parentId: { type: integer, format: int64 }, createTime: { type: string, format: date-time }, title: { type: string }, level: { type: integer }, sort: { type: integer }, name: { type: string }, icon: { type: string }, hidden: { type: integer, description: '前端隐藏：0->显示；1->隐藏' } }
+    UmsMenuNode:
+      allOf:
+        - $ref: '#/components/schemas/UmsMenu'
+        - { type: object, properties: { children: { type: array, items: { $ref: '#/components/schemas/UmsMenuNode' } } } }
+    UmsResource:
+      type: object
+      properties: { id: { type: integer, format: int64 }, createTime: { type: string, format: date-time }, name: { type: string }, url: { type: string }, description: { type: string }, categoryId: { type: integer, format: int64 } }
+    UmsResourceCategory:
+      type: object
+      properties: { id: { type: integer, format: int64 }, createTime: { type: string, format: date-time }, name: { type: string }, sort: { type: integer } }
+    UmsMemberLevel:
+      type: object
+      properties: { id: { type: integer, format: int64 }, name: { type: string }, growthPoint: { type: integer }, defaultStatus: { type: integer }, freeFreightPoint: { type: number }, commentGrowthPoint: { type: integer }, priviledgeFreeFreight: { type: integer }, priviledgeSignIn: { type: integer }, priviledgeComment: { type: integer }, priviledgePromotion: { type: integer }, priviledgeMemberPrice: { type: integer }, priviledgeBirthday: { type: integer }, note: { type: string } }
+    PmsBrandParam:
+      type: object
+      properties: { name: { type: string }, firstLetter: { type: string }, sort: { type: integer, minimum: 0 }, factoryStatus: { type: integer, enum: [0, 1] }, showStatus: { type: integer, enum: [0, 1] }, logo: { type: string }, bigPic: { type: string }, brandStory: { type: string } }
+      required: [name, logo]
+    PmsBrand:
+      type: object
+      properties: { id: { type: integer, format: int64 }, name: { type: string }, firstLetter: { type: string }, sort: { type: integer }, factoryStatus: { type: integer }, showStatus: { type: integer }, productCount: { type: integer }, productCommentCount: { type: integer }, logo: { type: string }, bigPic: { type: string }, brandStory: { type: string } }
+    PmsProduct:
+      type: object
+      properties: { id: { type: integer, format: int64 }, brandId: { type: integer, format: int64 }, productCategoryId: { type: integer, format: int64 }, feightTemplateId: { type: integer, format: int64 }, productAttributeCategoryId: { type: integer, format: int64 }, name: { type: string }, pic: { type: string }, productSn: { type: string }, deleteStatus: { type: integer }, publishStatus: { type: integer }, newStatus: { type: integer }, recommandStatus: { type: integer }, verifyStatus: { type: integer }, sort: { type: integer }, sale: { type: integer }, price: { type: number }, promotionPrice: { type: number }, giftGrowth: { type: integer }, giftPoint: { type: integer }, usePointLimit: { type: integer }, subTitle: { type: string }, originalPrice: { type: number }, stock: { type: integer }, lowStock: { type: integer }, unit: { type: string }, weight: { type: number }, previewStatus: { type: integer }, serviceIds: { type: string }, keywords: { type: string }, note: { type: string }, albumPics: { type: string }, detailTitle: { type: string }, promotionStartTime: { type: string, format: date-time }, promotionEndTime: { type: string, format: date-time }, promotionPerLimit: { type: integer }, promotionType: { type: integer }, brandName: { type: string }, productCategoryName: { type: string }, description: { type: string }, detailDesc: { type: string }, detailHtml: { type: string }, detailMobileHtml: { type: string } }
+    PmsProductParam:
+      allOf:
+        - $ref: '#/components/schemas/PmsProduct'
+        - type: object
+          properties:
+            productLadderList: { type: array, items: { type: object }, description: 商品阶梯价格设置 }
+            productFullReductionList: { type: array, items: { type: object }, description: 商品满减价格设置 }
+            memberPriceList: { type: array, items: { type: object }, description: 商品会员价格设置 }
+            skuStockList: { type: array, items: { $ref: '#/components/schemas/PmsSkuStock' } }
+            productAttributeValueList: { type: array, items: { type: object }, description: 商品参数及自定义规格属性 }
+            subjectProductRelationList: { type: array, items: { type: object }, description: 专题和商品关系 }
+            prefrenceAreaProductRelationList: { type: array, items: { type: object }, description: 优选专区和商品关系 }
+    PmsProductResult:
+      allOf:
+        - $ref: '#/components/schemas/PmsProductParam'
+        - { type: object, properties: { cateParentId: { type: integer, format: int64, description: 商品所选分类的父id } } }
+    PmsProductCategoryParam:
+      type: object
+      properties:
+        parentId: { type: integer, format: int64 }
+        name: { type: string }
+        productUnit: { type: string }
+        navStatus: { type: integer, enum: [0, 1] }
+        showStatus: { type: integer, enum: [0, 1] }
+        sort: { type: integer, minimum: 0 }
+        icon: { type: string }
+        keywords: { type: string }
+        description: { type: string }
+        productAttributeIdList: { type: array, items: { type: integer, format: int64 } }
+      required: [name]
+    PmsProductCategory:
+      type: object
+      properties: { id: { type: integer, format: int64 }, parentId: { type: integer, format: int64 }, name: { type: string }, level: { type: integer }, productCount: { type: integer }, productUnit: { type: string }, navStatus: { type: integer }, showStatus: { type: integer }, sort: { type: integer }, icon: { type: string }, keywords: { type: string }, description: { type: string } }
+    PmsProductCategoryWithChildrenItem:
+      allOf:
+        - $ref: '#/components/schemas/PmsProductCategory'
+        - { type: object, properties: { children: { type: array, items: { $ref: '#/components/schemas/PmsProductCategory' } } } }
+    PmsProductAttributeParam:
+      type: object
+      properties:
+        productAttributeCategoryId: { type: integer, format: int64 }
+        name: { type: string }
+        selectType: { type: integer, enum: [0, 1, 2] }
+        inputType: { type: integer, enum: [0, 1] }
+        inputList: { type: string, description: 可选值列表，以逗号隔开 }
+        sort: { type: integer }
+        filterType: { type: integer, enum: [0, 1] }
+        searchType: { type: integer, enum: [0, 1, 2] }
+        relatedStatus: { type: integer, enum: [0, 1] }
+        handAddStatus: { type: integer, enum: [0, 1] }
+        type: { type: integer, enum: [0, 1], description: '属性的类型；0->规格；1->参数' }
+      required: [productAttributeCategoryId, name]
+    PmsProductAttribute:
+      allOf:
+        - $ref: '#/components/schemas/PmsProductAttributeParam'
+        - { type: object, properties: { id: { type: integer, format: int64 } } }
+    PmsProductAttributeCategory:
+      type: object
+      properties: { id: { type: integer, format: int64 }, name: { type: string }, attributeCount: { type: integer }, paramCount: { type: integer } }
+    PmsProductAttributeCategoryItem:
+      allOf:
+        - $ref: '#/components/schemas/PmsProductAttributeCategory'
+        - { type: object, properties: { productAttributeList: { type: array, items: { $ref: '#/components/schemas/PmsProductAttribute' } } } }
+    ProductAttrInfo:
+      type: object
+      properties: { attributeId: { type: integer, format: int64 }, attributeCategoryId: { type: integer, format: int64 } }
+    PmsSkuStock:
+      type: object
+      properties: { id: { type: integer, format: int64 }, productId: { type: integer, format: int64 }, skuCode: { type: string }, price: { type: number }, stock: { type: integer }, lowStock: { type: integer }, pic: { type: string }, sale: { type: integer }, promotionPrice: { type: number }, lockStock: { type: integer }, spData: { type: string, description: 商品销售属性，json格式 } }
+    SmsCoupon:
+      type: object
+      properties: { id: { type: integer, format: int64 }, type: { type: integer }, name: { type: string }, platform: { type: integer }, count: { type: integer }, amount: { type: number }, perLimit: { type: integer }, minPoint: { type: number }, startTime: { type: string, format: date-time }, endTime: { type: string, format: date-time }, useType: { type: integer }, note: { type: string }, publishCount: { type: integer }, useCount: { type: integer }, receiveCount: { type: integer }, enableTime: { type: string, format: date-time }, code: { type: string }, memberLevel: { type: integer } }
+    SmsCouponParam:
+      allOf:
+        - $ref: '#/components/schemas/SmsCoupon'
+        - type: object
+          properties:
+            productRelationList: { type: array, items: { type: object }, description: 优惠券绑定的商品 }
+            productCategoryRelationList: { type: array, items: { type: object }, description: 优惠券绑定的商品分类 }
+    SmsFlashPromotion:
+      type: object
+      properties: { id: { type: integer, format: int64 }, title: { type: string }, startDate: { type: string, format: date-time }, endDate: { type: string, format: date-time }, status: { type: integer }, createTime: { type: string, format: date-time } }
+    SmsFlashPromotionSession:
+      type: object
+      properties: { id: { type: integer, format: int64 }, name: { type: string }, startTime: { type: string, format: date-time }, endTime: { type: string, format: date-time }, status: { type: integer }, createTime: { type: string, format: date-time } }
+    SmsFlashPromotionSessionDetail:
+      allOf:
+        - $ref: '#/components/schemas/SmsFlashPromotionSession'
+        - { type: object, properties: { productCount: { type: integer, description: 关联商品数量（来自 DTO 明细） } } }
+    SmsFlashPromotionProductRelation:
+      type: object
+      properties: { id: { type: integer, format: int64 }, flashPromotionId: { type: integer, format: int64 }, flashPromotionSessionId: { type: integer, format: int64 }, productId: { type: integer, format: int64 }, flashPromotionPrice: { type: number }, flashPromotionCount: { type: integer }, flashPromotionLimit: { type: integer }, sort: { type: integer } }
+    SmsFlashPromotionProduct:
+      allOf:
+        - $ref: '#/components/schemas/SmsFlashPromotionProductRelation'
+        - { type: object, properties: { product: { $ref: '#/components/schemas/PmsProduct' } } }
+    SmsHomeAdvertise:
+      type: object
+      properties: { id: { type: integer, format: int64 }, name: { type: string }, type: { type: integer }, pic: { type: string }, startTime: { type: string, format: date-time }, endTime: { type: string, format: date-time }, status: { type: integer }, clickCount: { type: integer }, orderCount: { type: integer }, url: { type: string }, note: { type: string }, sort: { type: integer } }
+    SmsHomeBrand:
+      type: object
+      properties: { id: { type: integer, format: int64 }, brandId: { type: integer, format: int64 }, brandName: { type: string }, recommendStatus: { type: integer }, sort: { type: integer } }
+    SmsHomeNewProduct:
+      type: object
+      properties: { id: { type: integer, format: int64 }, productId: { type: integer, format: int64 }, productName: { type: string }, recommendStatus: { type: integer }, sort: { type: integer } }
+    SmsHomeRecommendProduct:
+      type: object
+      properties: { id: { type: integer, format: int64 }, productId: { type: integer, format: int64 }, productName: { type: string }, recommendStatus: { type: integer }, sort: { type: integer } }
+    SmsHomeRecommendSubject:
+      type: object
+      properties: { id: { type: integer, format: int64 }, subjectId: { type: integer, format: int64 }, subjectName: { type: string }, recommendStatus: { type: integer }, sort: { type: integer } }
+    OmsOrder:
+      type: object
+      properties: { id: { type: integer, format: int64 }, memberId: { type: integer, format: int64 }, couponId: { type: integer, format: int64 }, orderSn: { type: string }, createTime: { type: string, format: date-time }, memberUsername: { type: string }, totalAmount: { type: number }, payAmount: { type: number }, freightAmount: { type: number }, promotionAmount: { type: number }, integrationAmount: { type: number }, couponAmount: { type: number }, discountAmount: { type: number }, payType: { type: integer }, sourceType: { type: integer }, status: { type: integer }, orderType: { type: integer }, deliveryCompany: { type: string }, deliverySn: { type: string }, autoConfirmDay: { type: integer }, integration: { type: integer }, growth: { type: integer }, promotionInfo: { type: string }, billType: { type: integer }, billHeader: { type: string }, billContent: { type: string }, billReceiverPhone: { type: string }, billReceiverEmail: { type: string }, receiverName: { type: string }, receiverPhone: { type: string }, receiverPostCode: { type: string }, receiverProvince: { type: string }, receiverCity: { type: string }, receiverRegion: { type: string }, receiverDetailAddress: { type: string }, note: { type: string }, confirmStatus: { type: integer }, deleteStatus: { type: integer }, useIntegration: { type: integer }, paymentTime: { type: string, format: date-time }, deliveryTime: { type: string, format: date-time }, receiveTime: { type: string, format: date-time }, commentTime: { type: string, format: date-time }, modifyTime: { type: string, format: date-time } }
+    OmsOrderDeliveryParam:
+      type: object
+      properties: { orderId: { type: integer, format: int64 }, deliveryCompany: { type: string }, deliverySn: { type: string } }
+    OmsReceiverInfoParam:
+      type: object
+      properties: { orderId: { type: integer, format: int64 }, receiverName: { type: string }, receiverPhone: { type: string }, receiverPostCode: { type: string }, receiverDetailAddress: { type: string }, receiverProvince: { type: string }, receiverCity: { type: string }, receiverRegion: { type: string }, status: { type: integer } }
+    OmsMoneyInfoParam:
+      type: object
+      properties: { orderId: { type: integer, format: int64 }, freightAmount: { type: number }, discountAmount: { type: number }, status: { type: integer } }
+    OmsUpdateStatusParam:
+      type: object
+      properties: { id: { type: integer, format: int64 }, companyAddressId: { type: integer, format: int64 }, returnAmount: { type: number }, handleNote: { type: string }, handleMan: { type: string }, receiveNote: { type: string }, receiveMan: { type: string }, status: { type: integer, description: '申请状态：1->退货中；2->已完成；3->已拒绝' } }
+    OmsOrderReturnApply:
+      type: object
+      properties: { id: { type: integer, format: int64 }, orderId: { type: integer, format: int64 }, companyAddressId: { type: integer, format: int64 }, productId: { type: integer, format: int64 }, orderSn: { type: string }, createTime: { type: string, format: date-time }, memberUsername: { type: string }, returnAmount: { type: number }, returnName: { type: string }, returnPhone: { type: string }, status: { type: integer }, handleTime: { type: string, format: date-time }, productPic: { type: string }, productName: { type: string }, productBrand: { type: string }, productAttr: { type: string }, productCount: { type: integer }, productPrice: { type: number }, productRealPrice: { type: number }, reason: { type: string }, description: { type: string }, proofPics: { type: string }, handleNote: { type: string }, handleMan: { type: string }, receiveMan: { type: string }, receiveTime: { type: string, format: date-time }, receiveNote: { type: string } }
+    OmsOrderReturnApplyResult:
+      allOf:
+        - $ref: '#/components/schemas/OmsOrderReturnApply'
+        - { type: object, properties: { companyAddress: { $ref: '#/components/schemas/OmsCompanyAddress' } } }
+    OmsOrderDetail:
+      allOf:
+        - $ref: '#/components/schemas/OmsOrder'
+        - type: object
+          properties:
+            orderItemList: { type: array, items: { type: object }, description: 订单商品列表 }
+            historyList: { type: array, items: { type: object }, description: 操作记录 }
+    OmsOrderReturnReason:
+      type: object
+      properties: { id: { type: integer, format: int64 }, name: { type: string }, sort: { type: integer }, status: { type: integer }, createTime: { type: string, format: date-time } }
+    OmsOrderSetting:
+      type: object
+      properties: { id: { type: integer, format: int64 }, flashOrderOvertime: { type: integer }, normalOrderOvertime: { type: integer }, confirmOvertime: { type: integer }, finishOvertime: { type: integer }, commentOvertime: { type: integer } }
+    OmsCompanyAddress:
+      type: object
+      properties: { id: { type: integer, format: int64 }, addressName: { type: string }, sendStatus: { type: integer }, receiveStatus: { type: integer }, name: { type: string }, phone: { type: string }, province: { type: string }, city: { type: string }, region: { type: string }, detailAddress: { type: string } }
+    CmsSubject:
+      type: object
+      properties: { id: { type: integer, format: int64 }, categoryId: { type: integer, format: int64 }, title: { type: string }, pic: { type: string }, productCount: { type: integer }, recommendStatus: { type: integer }, createTime: { type: string, format: date-time }, collectCount: { type: integer }, readCount: { type: integer }, commentCount: { type: integer }, albumPics: { type: string }, description: { type: string }, showStatus: { type: integer }, forwardCount: { type: integer }, categoryName: { type: string }, content: { type: string } }
+    CmsPrefrenceArea:
+      type: object
+      properties: { id: { type: integer, format: int64 }, name: { type: string }, subTitle: { type: string }, sort: { type: integer }, showStatus: { type: integer }, pic: { type: string, format: byte } }
+    MinioUploadDto:
+      type: object
+      properties: { url: { type: string, description: 文件访问URL }, name: { type: string, description: 文件名称 } }
+    OssPolicyResult:
+      type: object
+      properties: { accessKeyId: { type: string }, policy: { type: string }, signature: { type: string }, dir: { type: string }, host: { type: string }, callback: { type: string } }
+    OssCallbackResult:
+      type: object
+      properties: { filename: { type: string }, size: { type: string }, mimeType: { type: string }, width: { type: string }, height: { type: string } }
+    SmsCouponHistory:
+      type: object
+      description: 优惠券领取记录（mall-mbg 实体，字段以表 sms_coupon_history 为准）
+      properties: { id: { type: integer, format: int64 }, couponId: { type: integer, format: int64 }, memberId: { type: integer, format: int64 }, couponCode: { type: string }, memberNickname: { type: string }, getTime: { type: string, format: date-time }, useTime: { type: string, format: date-time }, useStatus: { type: integer }, orderId: { type: integer, format: int64 }, orderSn: { type: string } }
