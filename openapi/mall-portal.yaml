@@ -1,0 +1,1094 @@
+openapi: 3.0.3
+info:
+  title: mall-portal 前台商城服务 API
+  version: 1.0.0
+  description: |
+    mall-portal 前台商城接口规范（OpenAPI 3.0.3）。
+
+    源码依据：mall 仓库 master 分支 mall-portal 模块 13 个 Controller，逐方法核对生成。
+    服务地址：http://localhost:8085（application-dev.yml），未配置 context-path。
+    鉴权：JWT。请求头 Authorization: Bearer {token}；jwt.tokenHeader=Authorization，jwt.tokenHead='Bearer '，jwt.expiration=604800 秒（7 天），jwt.secret=mall-portal-secret。
+
+    统一响应：CommonResult{code,message,data}，HTTP 状态恒为 200（除未捕获异常）。
+    code 取值：200 成功 / 500 操作失败 / 404 参数检验失败 / 401 未登录或 token 过期 / 403 无权限。
+
+    【重要】mall-portal 未配置全局异常处理（mall-portal 内无 @RestControllerAdvice），
+    未捕获异常（NPE、SQL 异常、参数类型转换失败等）由 Spring 默认 /error 处理，
+    返回 HTTP 4xx/5xx + 默认错误体 {timestamp,status,error,path}，不是 CommonResult。
+    断言时必须区分「业务失败（HTTP 200 + code!=200）」与「未捕获异常（HTTP 5xx + 非统一体）」两类。
+
+    安全白名单（application.yml secure.ignored.urls）：/sso/** /home/** /product/** /brand/** /alipay/**。
+    其余接口需携带有效 token。白名单内仍有业务约束：/sso/info 未登录时返回 code=401。
+
+    分页语义：本服务使用 PageHelper，pageNum 从 1 开始（与 mall-search 的 Spring Data 0 起语义相反）。
+servers:
+  - url: http://localhost:8085
+    description: 开发环境（dev profile）
+tags:
+  - name: UmsMemberController
+    description: 会员登录注册管理（/sso，白名单）
+  - name: HomeController
+    description: 首页内容管理（/home，白名单）
+  - name: PmsPortalBrandController
+    description: 前台品牌管理（/brand，白名单）
+  - name: PmsPortalProductController
+    description: 前台商品管理（/product，白名单）
+  - name: AlipayController
+    description: 支付宝支付相关接口（/alipay，白名单）
+  - name: OmsCartItemController
+    description: 购物车管理（/cart，需登录）
+  - name: OmsPortalOrderController
+    description: 订单管理（/order，需登录）
+  - name: OmsPortalOrderReturnApplyController
+    description: 退货申请管理（/returnApply，需登录）
+  - name: UmsMemberCouponController
+    description: 用户优惠券管理（/member/coupon，需登录）
+  - name: UmsMemberReceiveAddressController
+    description: 会员收货地址管理（/member/address，需登录）
+  - name: MemberAttentionController
+    description: 会员关注品牌管理（/member/attention，需登录）
+  - name: MemberCollectionController
+    description: 会员收藏管理（/member/productCollection，需登录）
+  - name: MemberReadHistoryController
+    description: 会员商品浏览记录管理（/member/readHistory，需登录）
+security:
+  - bearerAuth: []
+paths:
+  /sso/register:
+    post:
+      tags: [UmsMemberController]
+      operationId: memberRegister
+      summary: 会员注册
+      description: 所有参数均为 @RequestParam 且未声明 required=false，缺失时 Spring 返回 HTTP 400（非 CommonResult）。会员已存在、验证码错误等业务失败走 code=500 + message。
+      security: []
+      parameters:
+        - { name: username, in: query, required: true, schema: { type: string } }
+        - { name: password, in: query, required: true, schema: { type: string } }
+        - { name: telephone, in: query, required: true, schema: { type: string } }
+        - { name: authCode, in: query, required: true, schema: { type: string }, description: 短信验证码，由 /sso/getAuthCode 生成，Redis key ums:authCode，有效期 90 秒 }
+      responses:
+        '200': { $ref: '#/components/responses/CommonResultResponse' }
+      x-data-type: 'null（成功时 message=注册成功）'
+  /sso/login:
+    post:
+      tags: [UmsMemberController]
+      operationId: memberLogin
+      summary: 会员登录
+      description: |
+        成功返回 {token, tokenHead}。
+        【反直觉】账号或密码错误时走 CommonResult.validateFailed，code=404（不是 401），message=用户名或密码错误。
+      security: []
+      parameters:
+        - { name: username, in: query, required: true, schema: { type: string } }
+        - { name: password, in: query, required: true, schema: { type: string } }
+      responses:
+        '200': { $ref: '#/components/responses/CommonResultResponse' }
+      x-data-type: 'Map<String,String>{token, tokenHead}'
+  /sso/info:
+    get:
+      tags: [UmsMemberController]
+      operationId: memberInfo
+      summary: 获取当前登录会员信息
+      description: 白名单放行，但 Principal 为 null 时返回 CommonResult.unauthorized(null)，即 code=401。带无效 token 时同样 code=401。
+      security: []
+      responses:
+        '200': { $ref: '#/components/responses/CommonResultResponse' }
+      x-data-type: 'UmsMember；未登录时 data=null 且 code=401'
+  /sso/getAuthCode:
+    get:
+      tags: [UmsMemberController]
+      operationId: getAuthCode
+      summary: 获取短信验证码
+      description: 【安全风险】直接把验证码明文返回给前端（data 即 authCode），生产环境应改为仅下发短信。
+      security: []
+      parameters:
+        - { name: telephone, in: query, required: true, schema: { type: string } }
+      responses:
+        '200': { $ref: '#/components/responses/CommonResultResponse' }
+      x-data-type: 'String（验证码明文）'
+  /sso/updatePassword:
+    post:
+      tags: [UmsMemberController]
+      operationId: memberUpdatePassword
+      summary: 会员修改密码
+      security: []
+      parameters:
+        - { name: telephone, in: query, required: true, schema: { type: string } }
+        - { name: password, in: query, required: true, schema: { type: string } }
+        - { name: authCode, in: query, required: true, schema: { type: string } }
+      responses:
+        '200': { $ref: '#/components/responses/CommonResultResponse' }
+      x-data-type: 'null（成功时 message=密码修改成功）'
+  /sso/refreshToken:
+    get:
+      tags: [UmsMemberController]
+      operationId: refreshToken
+      summary: 刷新 token
+      description: 直接从请求头读取旧 token；过期返回 CommonResult.failed，code=500、message=token已经过期！；缺失请求头时 message 同为 token已经过期！。
+      security: []
+      parameters:
+        - { name: Authorization, in: header, required: false, schema: { type: string }, description: 'Bearer {token}' }
+      responses:
+        '200': { $ref: '#/components/responses/CommonResultResponse' }
+      x-data-type: 'Map<String,String>{token, tokenHead}'
+  /home/content:
+    get:
+      tags: [HomeController]
+      operationId: homeContent
+      summary: 首页内容信息展示
+      security: []
+      responses:
+        '200': { $ref: '#/components/responses/CommonResultResponse' }
+      x-data-type: 'HomeContentResult（广告、品牌+商品、分类、人气/新品推荐聚合）'
+  /home/recommendProductList:
+    get:
+      tags: [HomeController]
+      operationId: recommendProductList
+      summary: 分页获取推荐商品
+      description: 返回裸 List，不是 CommonPage。
+      security: []
+      parameters:
+        - { name: pageSize, in: query, required: false, schema: { type: integer, default: 4 } }
+        - { name: pageNum, in: query, required: false, schema: { type: integer, default: 1 } }
+      responses:
+        '200': { $ref: '#/components/responses/CommonResultResponse' }
+      x-data-type: 'List<PmsProduct>'
+  '/home/productCateList/{parentId}':
+    get:
+      tags: [HomeController]
+      operationId: homeProductCateList
+      summary: 获取首页商品分类
+      security: []
+      parameters:
+        - { name: parentId, in: path, required: true, schema: { type: integer, format: int64 }, description: 0 表示取一级分类 }
+      responses:
+        '200': { $ref: '#/components/responses/CommonResultResponse' }
+      x-data-type: 'List<PmsProductCategory>'
+  /home/subjectList:
+    get:
+      tags: [HomeController]
+      operationId: homeSubjectList
+      summary: 根据分类获取专题
+      security: []
+      parameters:
+        - { name: cateId, in: query, required: false, schema: { type: integer, format: int64 } }
+        - { name: pageSize, in: query, required: false, schema: { type: integer, default: 4 } }
+        - { name: pageNum, in: query, required: false, schema: { type: integer, default: 1 } }
+      responses:
+        '200': { $ref: '#/components/responses/CommonResultResponse' }
+      x-data-type: 'List<CmsSubject>'
+  /home/hotProductList:
+    get:
+      tags: [HomeController]
+      operationId: homeHotProductList
+      summary: 分页获取人气推荐商品
+      security: []
+      parameters:
+        - { name: pageNum, in: query, required: false, schema: { type: integer, default: 1 } }
+        - { name: pageSize, in: query, required: false, schema: { type: integer, default: 6 } }
+      responses:
+        '200': { $ref: '#/components/responses/CommonResultResponse' }
+      x-data-type: 'List<PmsProduct>'
+  /home/newProductList:
+    get:
+      tags: [HomeController]
+      operationId: homeNewProductList
+      summary: 分页获取新品推荐商品
+      security: []
+      parameters:
+        - { name: pageNum, in: query, required: false, schema: { type: integer, default: 1 } }
+        - { name: pageSize, in: query, required: false, schema: { type: integer, default: 6 } }
+      responses:
+        '200': { $ref: '#/components/responses/CommonResultResponse' }
+      x-data-type: 'List<PmsProduct>'
+  /brand/recommendList:
+    get:
+      tags: [PmsPortalBrandController]
+      operationId: portalBrandRecommendList
+      summary: 分页获取推荐品牌
+      description: 返回裸 List，不是 CommonPage。
+      security: []
+      parameters:
+        - { name: pageSize, in: query, required: false, schema: { type: integer, default: 6 } }
+        - { name: pageNum, in: query, required: false, schema: { type: integer, default: 1 } }
+      responses:
+        '200': { $ref: '#/components/responses/CommonResultResponse' }
+      x-data-type: 'List<PmsBrand>'
+  '/brand/detail/{brandId}':
+    get:
+      tags: [PmsPortalBrandController]
+      operationId: portalBrandDetail
+      summary: 获取品牌详情
+      security: []
+      parameters:
+        - { name: brandId, in: path, required: true, schema: { type: integer, format: int64 } }
+      responses:
+        '200': { $ref: '#/components/responses/CommonResultResponse' }
+      x-data-type: 'PmsBrand；id 不存在时 data=null 但 code=200'
+  /brand/productList:
+    get:
+      tags: [PmsPortalBrandController]
+      operationId: portalBrandProductList
+      summary: 分页获取品牌相关商品
+      security: []
+      parameters:
+        - { name: brandId, in: query, required: true, schema: { type: integer, format: int64 } }
+        - { name: pageNum, in: query, required: false, schema: { type: integer, default: 1 } }
+        - { name: pageSize, in: query, required: false, schema: { type: integer, default: 6 } }
+      responses:
+        '200': { $ref: '#/components/responses/CommonResultResponse' }
+      x-data-type: 'CommonPage<PmsProduct>'
+  /product/search:
+    get:
+      tags: [PmsPortalProductController]
+      operationId: portalProductSearch
+      summary: 综合搜索、筛选、排序
+      description: |
+        【易错】pageNum 默认值为 0（非 1），而本服务使用 PageHelper，0 起始语义与其他接口不一致，需实测 pageNum=0 的分页行为。
+        返回 CommonPage，而同级的 /home/recommendProductList 返回裸 List。
+      security: []
+      parameters:
+        - { name: keyword, in: query, required: false, schema: { type: string } }
+        - { name: brandId, in: query, required: false, schema: { type: integer, format: int64 } }
+        - { name: productCategoryId, in: query, required: false, schema: { type: integer, format: int64 } }
+        - { name: pageNum, in: query, required: false, schema: { type: integer, default: 0 } }
+        - { name: pageSize, in: query, required: false, schema: { type: integer, default: 5 } }
+        - name: sort
+          in: query
+          required: false
+          description: '0 按相关度；1 按新品；2 按销量；3 价格从低到高；4 价格从高到低'
+          schema: { type: integer, default: 0, enum: [0, 1, 2, 3, 4] }
+      responses:
+        '200': { $ref: '#/components/responses/CommonResultResponse' }
+      x-data-type: 'CommonPage<PmsProduct>'
+  /product/categoryTreeList:
+    get:
+      tags: [PmsPortalProductController]
+      operationId: portalProductCategoryTreeList
+      summary: 以树形结构获取所有商品分类
+      security: []
+      responses:
+        '200': { $ref: '#/components/responses/CommonResultResponse' }
+      x-data-type: 'List<PmsProductCategoryNode>'
+  '/product/detail/{id}':
+    get:
+      tags: [PmsPortalProductController]
+      operationId: portalProductDetail
+      summary: 获取前台商品详情
+      security: []
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: integer, format: int64 } }
+      responses:
+        '200': { $ref: '#/components/responses/CommonResultResponse' }
+      x-data-type: 'PmsPortalProductDetail（含 skuStockList、productAttributeList、productAttributeValueList）'
+  /alipay/pay:
+    get:
+      tags: [AlipayController]
+      operationId: alipayPay
+      summary: 支付宝电脑网站支付
+      description: 无 @ResponseBody，直接向响应流写入 HTML 表单，Content-Type=text/html。参数为 JavaBean 绑定（query），非 JSON。断言不能用 JSON schema。
+      security: []
+      parameters:
+        - { name: outTradeNo, in: query, required: false, schema: { type: string }, description: 商户订单号 }
+        - { name: subject, in: query, required: false, schema: { type: string }, description: 订单标题 }
+        - { name: totalAmount, in: query, required: false, schema: { type: number }, description: 订单总金额，元，两位小数 }
+      responses:
+        '200':
+          description: HTML 表单片段
+          content:
+            text/html:
+              schema: { type: string }
+  /alipay/webPay:
+    get:
+      tags: [AlipayController]
+      operationId: alipayWebPay
+      summary: 支付宝手机网站支付
+      description: 同上，Content-Type=text/html。
+      security: []
+      parameters:
+        - { name: outTradeNo, in: query, required: false, schema: { type: string } }
+        - { name: subject, in: query, required: false, schema: { type: string } }
+        - { name: totalAmount, in: query, required: false, schema: { type: number } }
+      responses:
+        '200':
+          description: HTML 表单片段
+          content:
+            text/html:
+              schema: { type: string }
+  /alipay/notify:
+    post:
+      tags: [AlipayController]
+      operationId: alipayNotify
+      summary: 支付宝异步回调
+      description: 必须 POST，参数从 request.getParameterMap() 读取（form 编码）。返回纯文本 success / failure，不是 CommonResult。
+      security: []
+      requestBody:
+        required: false
+        content:
+          application/x-www-form-urlencoded:
+            schema:
+              type: object
+              additionalProperties: { type: string }
+              description: 支付宝异步通知全部字段（out_trade_no、trade_no、trade_status、total_amount、sign 等）
+      responses:
+        '200':
+          description: 处理结果
+          content:
+            text/plain:
+              schema: { type: string, enum: [success, failure] }
+  /alipay/query:
+    get:
+      tags: [AlipayController]
+      operationId: alipayQuery
+      summary: 支付宝统一收单线下交易查询
+      description: 【注意】outTradeNo、tradeNo 均未加 @RequestParam，缺失不会 400，而是 null 直接透传给支付宝 SDK。支付成功返回 TRADE_SUCCESS。
+      security: []
+      parameters:
+        - { name: outTradeNo, in: query, required: false, schema: { type: string } }
+        - { name: tradeNo, in: query, required: false, schema: { type: string } }
+      responses:
+        '200': { $ref: '#/components/responses/CommonResultResponse' }
+      x-data-type: 'String（支付宝交易状态，如 TRADE_SUCCESS）'
+  /cart/add:
+    post:
+      tags: [OmsCartItemController]
+      operationId: cartAdd
+      summary: 添加商品到购物车
+      description: |
+        【缺陷候选】add 内对 quantity 无任何校验，quantity=0 或负数会被直接写入数据库。
+        同一 productId+productSkuId 已存在时累加 quantity，否则新增。
+        memberId 由后端从登录态覆盖，请求体传入的 memberId 不可信。
+      parameters:
+        - { $ref: '#/components/parameters/bearerToken' }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/OmsCartItem' }
+      responses:
+        '200': { $ref: '#/components/responses/CommonResultResponse' }
+      x-data-type: 'Integer（受影响行数）；count<=0 时 code=500'
+  /cart/list:
+    get:
+      tags: [OmsCartItemController]
+      operationId: cartList
+      summary: 获取当前会员的购物车列表
+      description: 未登录时 RestAuthenticationEntryPoint 只写 body 不设 HTTP 状态，HTTP 仍为 200，body 为 code=401。
+      parameters:
+        - { $ref: '#/components/parameters/bearerToken' }
+      responses:
+        '200': { $ref: '#/components/responses/CommonResultResponse' }
+      x-data-type: 'List<OmsCartItem>'
+  /cart/list/promotion:
+    get:
+      tags: [OmsCartItemController]
+      operationId: cartListPromotion
+      summary: 获取当前会员的购物车列表（含促销信息）
+      parameters:
+        - { $ref: '#/components/parameters/bearerToken' }
+        - { name: cartIds, in: query, required: false, style: form, explode: true, schema: { type: array, items: { type: integer, format: int64 } }, description: 不传则返回全部购物车商品 }
+      responses:
+        '200': { $ref: '#/components/responses/CommonResultResponse' }
+      x-data-type: 'List<CartPromotionItem>'
+  /cart/update/quantity:
+    get:
+      tags: [OmsCartItemController]
+      operationId: cartUpdateQuantity
+      summary: 修改购物车中指定商品的数量
+      description: 【设计问题】用 GET 执行写操作，存在被浏览器预取/爬虫误触发的风险。
+      parameters:
+        - { $ref: '#/components/parameters/bearerToken' }
+        - { name: id, in: query, required: true, schema: { type: integer, format: int64 }, description: 购物车项 id }
+        - { name: quantity, in: query, required: true, schema: { type: integer } }
+      responses:
+        '200': { $ref: '#/components/responses/CommonResultResponse' }
+      x-data-type: 'Integer（受影响行数）'
+  '/cart/getProduct/{productId}':
+    get:
+      tags: [OmsCartItemController]
+      operationId: cartGetProduct
+      summary: 获取购物车中指定商品的规格（用于重选规格）
+      parameters:
+        - { $ref: '#/components/parameters/bearerToken' }
+        - { name: productId, in: path, required: true, schema: { type: integer, format: int64 } }
+      responses:
+        '200': { $ref: '#/components/responses/CommonResultResponse' }
+      x-data-type: 'CartProduct（product + skuStockList）'
+  /cart/update/attr:
+    post:
+      tags: [OmsCartItemController]
+      operationId: cartUpdateAttr
+      summary: 修改购物车中商品的规格
+      parameters:
+        - { $ref: '#/components/parameters/bearerToken' }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/OmsCartItem' }
+      responses:
+        '200': { $ref: '#/components/responses/CommonResultResponse' }
+      x-data-type: 'Integer（受影响行数）'
+  /cart/delete:
+    post:
+      tags: [OmsCartItemController]
+      operationId: cartDelete
+      summary: 删除购物车中的指定商品
+      parameters:
+        - { $ref: '#/components/parameters/bearerToken' }
+        - { name: ids, in: query, required: true, style: form, explode: false, schema: { type: array, items: { type: integer, format: int64 } }, description: 逗号分隔，如 ids=1,2 }
+      responses:
+        '200': { $ref: '#/components/responses/CommonResultResponse' }
+      x-data-type: 'Integer（受影响行数）'
+  /cart/clear:
+    post:
+      tags: [OmsCartItemController]
+      operationId: cartClear
+      summary: 清空当前会员的购物车
+      description: 购物车本来为空时 count=0，返回 code=500（而非幂等成功）。
+      parameters:
+        - { $ref: '#/components/parameters/bearerToken' }
+      responses:
+        '200': { $ref: '#/components/responses/CommonResultResponse' }
+      x-data-type: 'Integer（受影响行数）'
+  /order/generateConfirmOrder:
+    post:
+      tags: [OmsPortalOrderController]
+      operationId: generateConfirmOrder
+      summary: 根据购物车信息生成确认单
+      description: |
+        【易错】请求体是纯 JSON 数组（如 [1,2]），不是 {"cartIds":[...]}。
+        【缺陷候选】传空数组时 CollUtil.isNotEmpty(cartIds) 为 false，会退化为返回全部购物车商品的确认单。
+      parameters:
+        - { $ref: '#/components/parameters/bearerToken' }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: array
+              items: { type: integer, format: int64 }
+              description: 购物车项 id 列表
+      responses:
+        '200': { $ref: '#/components/responses/CommonResultResponse' }
+      x-data-type: 'ConfirmOrderResult（cartPromotionItemList、memberReceiveAddressList、couponHistoryDetailList、integrationConsumeSetting、calcAmount）'
+  /order/generateOrder:
+    post:
+      tags: [OmsPortalOrderController]
+      operationId: generateOrder
+      summary: 根据购物车信息生成订单
+      description: |
+        成功返回 {order, orderItemList} 并 message=下单成功。
+        关键校验：先校验收货地址（memberReceiveAddressId 为空抛「请选择收货地址！」），再校验库存（hasStock）、优惠券（getUseCoupon）。
+        业务失败统一 code=500 + message（如「库存不足」「优惠券不存在」）。
+        【运行期风险】下单成功后会发送 RabbitMQ 延迟取消消息（cancelOrderQueue），MQ 不可用时接口报错但订单已落库，重试会导致重复下单。
+      parameters:
+        - { $ref: '#/components/parameters/bearerToken' }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/OrderParam' }
+      responses:
+        '200': { $ref: '#/components/responses/CommonResultResponse' }
+      x-data-type: 'Map<String,Object>{order, orderItemList}'
+  /order/paySuccess:
+    post:
+      tags: [OmsPortalOrderController]
+      operationId: paySuccess
+      summary: 用户支付成功的回调
+      description: |
+        【缺陷候选】paySuccess 未校验订单当前状态，重复回调会再次扣减 stock、再次累减 lock_stock（幂等缺陷）。
+        正常路径：订单 status 0->1，payment_time 写入，扣减 stock 与 lock_stock。
+      parameters:
+        - { $ref: '#/components/parameters/bearerToken' }
+        - { name: orderId, in: query, required: true, schema: { type: integer, format: int64 } }
+        - name: payType
+          in: query
+          required: true
+          description: '0 未支付；1 支付宝；2 微信'
+          schema: { type: integer, enum: [0, 1, 2] }
+      responses:
+        '200': { $ref: '#/components/responses/CommonResultResponse' }
+      x-data-type: 'Integer（受影响行数）；message=支付成功'
+  /order/cancelTimeOutOrder:
+    post:
+      tags: [OmsPortalOrderController]
+      operationId: cancelTimeOutOrder
+      summary: 自动取消超时订单（定时任务入口）
+      parameters:
+        - { $ref: '#/components/parameters/bearerToken' }
+      responses:
+        '200': { $ref: '#/components/responses/CommonResultResponse' }
+      x-data-type: 'null'
+  /order/cancelOrder:
+    post:
+      tags: [OmsPortalOrderController]
+      operationId: cancelOrder
+      summary: 取消单个超时订单（延时消息入口）
+      description: 【注意】orderId 未加 @RequestParam，缺失不会 400，为 null 时直接进入 service（预期无效果，需实测）。
+      parameters:
+        - { $ref: '#/components/parameters/bearerToken' }
+        - { name: orderId, in: query, required: false, schema: { type: integer, format: int64 } }
+      responses:
+        '200': { $ref: '#/components/responses/CommonResultResponse' }
+      x-data-type: 'null'
+  /order/list:
+    get:
+      tags: [OmsPortalOrderController]
+      operationId: orderList
+      summary: 按状态分页获取用户订单列表
+      parameters:
+        - { $ref: '#/components/parameters/bearerToken' }
+        - name: status
+          in: query
+          required: true
+          description: '-1 全部；0 待付款；1 待发货；2 已发货；3 已完成；4 已关闭'
+          schema: { type: integer, default: -1, enum: [-1, 0, 1, 2, 3, 4] }
+        - { name: pageNum, in: query, required: false, schema: { type: integer, default: 1 } }
+        - { name: pageSize, in: query, required: false, schema: { type: integer, default: 5 } }
+      responses:
+        '200': { $ref: '#/components/responses/CommonResultResponse' }
+      x-data-type: 'CommonPage<OmsOrderDetail>'
+  '/order/detail/{orderId}':
+    get:
+      tags: [OmsPortalOrderController]
+      operationId: orderDetail
+      summary: 根据 ID 获取订单详情
+      description: 未校验订单归属，存在越权查看他人订单的风险（需实测确认 service 是否过滤 memberId）。
+      parameters:
+        - { $ref: '#/components/parameters/bearerToken' }
+        - { name: orderId, in: path, required: true, schema: { type: integer, format: int64 } }
+      responses:
+        '200': { $ref: '#/components/responses/CommonResultResponse' }
+      x-data-type: 'OmsOrderDetail'
+  /order/cancelUserOrder:
+    post:
+      tags: [OmsPortalOrderController]
+      operationId: cancelUserOrder
+      summary: 用户取消订单
+      description: |
+        【缺陷候选】只能取消 status=0 的订单；查不到 status=0 的订单时 service 直接 return，控制器仍返回 code=200，
+        即「取消已支付订单」表现为静默成功且无任何变更。
+        成功时释放 lock_stock、回退优惠券与积分。
+        【注意】orderId 未加 @RequestParam，缺失时为 null。
+      parameters:
+        - { $ref: '#/components/parameters/bearerToken' }
+        - { name: orderId, in: query, required: false, schema: { type: integer, format: int64 } }
+      responses:
+        '200': { $ref: '#/components/responses/CommonResultResponse' }
+      x-data-type: 'null'
+  /order/confirmReceiveOrder:
+    post:
+      tags: [OmsPortalOrderController]
+      operationId: confirmReceiveOrder
+      summary: 用户确认收货
+      description: status 必须为 2 才可确认，否则抛「不能确认他人订单！」等业务异常（code=500）。orderId 未加 @RequestParam。
+      parameters:
+        - { $ref: '#/components/parameters/bearerToken' }
+        - { name: orderId, in: query, required: false, schema: { type: integer, format: int64 } }
+      responses:
+        '200': { $ref: '#/components/responses/CommonResultResponse' }
+      x-data-type: 'null'
+  /order/deleteOrder:
+    post:
+      tags: [OmsPortalOrderController]
+      operationId: deleteOrder
+      summary: 用户删除订单
+      description: 仅 status 为 3（已完成）或 4（已关闭）可删，否则抛「只能删除已完成或已关闭的订单！」。orderId 未加 @RequestParam。
+      parameters:
+        - { $ref: '#/components/parameters/bearerToken' }
+        - { name: orderId, in: query, required: false, schema: { type: integer, format: int64 } }
+      responses:
+        '200': { $ref: '#/components/responses/CommonResultResponse' }
+      x-data-type: 'null'
+  /returnApply/create:
+    post:
+      tags: [OmsPortalOrderReturnApplyController]
+      operationId: returnApplyCreate
+      summary: 申请退货
+      parameters:
+        - { $ref: '#/components/parameters/bearerToken' }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/OmsOrderReturnApplyParam' }
+      responses:
+        '200': { $ref: '#/components/responses/CommonResultResponse' }
+      x-data-type: 'Integer（受影响行数）'
+  '/member/coupon/add/{couponId}':
+    post:
+      tags: [UmsMemberCouponController]
+      operationId: memberCouponAdd
+      summary: 领取指定优惠券
+      description: 无失败分支，恒返回 code=200、message=领取成功（重复领取由 service 内部处理，需实测是否抛异常）。
+      parameters:
+        - { $ref: '#/components/parameters/bearerToken' }
+        - { name: couponId, in: path, required: true, schema: { type: integer, format: int64 } }
+      responses:
+        '200': { $ref: '#/components/responses/CommonResultResponse' }
+      x-data-type: 'null'
+  /member/coupon/listHistory:
+    get:
+      tags: [UmsMemberCouponController]
+      operationId: memberCouponListHistory
+      summary: 获取会员优惠券历史列表
+      parameters:
+        - { $ref: '#/components/parameters/bearerToken' }
+        - name: useStatus
+          in: query
+          required: false
+          description: '0 未使用；1 已使用；2 已过期'
+          schema: { type: integer, enum: [0, 1, 2] }
+      responses:
+        '200': { $ref: '#/components/responses/CommonResultResponse' }
+      x-data-type: 'List<SmsCouponHistory>'
+  /member/coupon/list:
+    get:
+      tags: [UmsMemberCouponController]
+      operationId: memberCouponList
+      summary: 获取会员优惠券列表
+      parameters:
+        - { $ref: '#/components/parameters/bearerToken' }
+        - name: useStatus
+          in: query
+          required: false
+          description: '0 未使用；1 已使用；2 已过期'
+          schema: { type: integer, enum: [0, 1, 2] }
+      responses:
+        '200': { $ref: '#/components/responses/CommonResultResponse' }
+      x-data-type: 'List<SmsCoupon>'
+  '/member/coupon/list/cart/{type}':
+    get:
+      tags: [UmsMemberCouponController]
+      operationId: memberCouponListCart
+      summary: 获取登录会员购物车的相关优惠券
+      parameters:
+        - { $ref: '#/components/parameters/bearerToken' }
+        - name: type
+          in: path
+          required: true
+          description: '0 不可用；1 可用'
+          schema: { type: integer, default: 1, enum: [0, 1] }
+      responses:
+        '200': { $ref: '#/components/responses/CommonResultResponse' }
+      x-data-type: 'List<SmsCouponHistoryDetail>'
+  '/member/coupon/listByProduct/{productId}':
+    get:
+      tags: [UmsMemberCouponController]
+      operationId: memberCouponListByProduct
+      summary: 获取当前商品相关优惠券
+      parameters:
+        - { $ref: '#/components/parameters/bearerToken' }
+        - { name: productId, in: path, required: true, schema: { type: integer, format: int64 } }
+      responses:
+        '200': { $ref: '#/components/responses/CommonResultResponse' }
+      x-data-type: 'List<SmsCoupon>'
+  /member/address/add:
+    post:
+      tags: [UmsMemberReceiveAddressController]
+      operationId: addressAdd
+      summary: 添加收货地址
+      parameters:
+        - { $ref: '#/components/parameters/bearerToken' }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/UmsMemberReceiveAddress' }
+      responses:
+        '200': { $ref: '#/components/responses/CommonResultResponse' }
+      x-data-type: 'Integer（受影响行数）'
+  '/member/address/delete/{id}':
+    post:
+      tags: [UmsMemberReceiveAddressController]
+      operationId: addressDelete
+      summary: 删除收货地址
+      parameters:
+        - { $ref: '#/components/parameters/bearerToken' }
+        - { name: id, in: path, required: true, schema: { type: integer, format: int64 } }
+      responses:
+        '200': { $ref: '#/components/responses/CommonResultResponse' }
+      x-data-type: 'Integer（受影响行数）；不存在的 id 返回 code=500'
+  '/member/address/update/{id}':
+    post:
+      tags: [UmsMemberReceiveAddressController]
+      operationId: addressUpdate
+      summary: 修改收货地址
+      parameters:
+        - { $ref: '#/components/parameters/bearerToken' }
+        - { name: id, in: path, required: true, schema: { type: integer, format: int64 } }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/UmsMemberReceiveAddress' }
+      responses:
+        '200': { $ref: '#/components/responses/CommonResultResponse' }
+      x-data-type: 'Integer（受影响行数）'
+  /member/address/list:
+    get:
+      tags: [UmsMemberReceiveAddressController]
+      operationId: addressList
+      summary: 获取所有收货地址
+      parameters:
+        - { $ref: '#/components/parameters/bearerToken' }
+      responses:
+        '200': { $ref: '#/components/responses/CommonResultResponse' }
+      x-data-type: 'List<UmsMemberReceiveAddress>'
+  '/member/address/{id}':
+    get:
+      tags: [UmsMemberReceiveAddressController]
+      operationId: addressGetItem
+      summary: 获取收货地址详情
+      description: 【匹配风险】与 /member/address/list 同层级，静态段 list 优先于变量段 {id}，若 id 段传入 list 会命中 list 接口。
+      parameters:
+        - { $ref: '#/components/parameters/bearerToken' }
+        - { name: id, in: path, required: true, schema: { type: integer, format: int64 } }
+      responses:
+        '200': { $ref: '#/components/responses/CommonResultResponse' }
+      x-data-type: 'UmsMemberReceiveAddress'
+  /member/attention/add:
+    post:
+      tags: [MemberAttentionController]
+      operationId: attentionAdd
+      summary: 添加品牌关注
+      parameters:
+        - { $ref: '#/components/parameters/bearerToken' }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/MemberBrandAttention' }
+      responses:
+        '200': { $ref: '#/components/responses/CommonResultResponse' }
+      x-data-type: 'Integer（插入条数）'
+  /member/attention/delete:
+    post:
+      tags: [MemberAttentionController]
+      operationId: attentionDelete
+      summary: 取消品牌关注
+      description: 【注意】brandId 未加 @RequestParam，缺失时为 null，删除条数 0 -> code=500。
+      parameters:
+        - { $ref: '#/components/parameters/bearerToken' }
+        - { name: brandId, in: query, required: false, schema: { type: integer, format: int64 } }
+      responses:
+        '200': { $ref: '#/components/responses/CommonResultResponse' }
+      x-data-type: 'Integer（删除条数）'
+  /member/attention/list:
+    get:
+      tags: [MemberAttentionController]
+      operationId: attentionList
+      summary: 分页查询当前用户品牌关注列表
+      parameters:
+        - { $ref: '#/components/parameters/bearerToken' }
+        - { name: pageNum, in: query, required: false, schema: { type: integer, default: 1 } }
+        - { name: pageSize, in: query, required: false, schema: { type: integer, default: 5 } }
+      responses:
+        '200': { $ref: '#/components/responses/CommonResultResponse' }
+      x-data-type: 'CommonPage<MemberBrandAttention>'
+  /member/attention/detail:
+    get:
+      tags: [MemberAttentionController]
+      operationId: attentionDetail
+      summary: 根据品牌 ID 获取品牌关注详情
+      parameters:
+        - { $ref: '#/components/parameters/bearerToken' }
+        - { name: brandId, in: query, required: true, schema: { type: integer, format: int64 } }
+      responses:
+        '200': { $ref: '#/components/responses/CommonResultResponse' }
+      x-data-type: 'MemberBrandAttention'
+  /member/attention/clear:
+    post:
+      tags: [MemberAttentionController]
+      operationId: attentionClear
+      summary: 清空当前用户品牌关注列表
+      parameters:
+        - { $ref: '#/components/parameters/bearerToken' }
+      responses:
+        '200': { $ref: '#/components/responses/CommonResultResponse' }
+      x-data-type: 'null（恒成功，与 /cart/clear 的 count>0 判定不一致）'
+  /member/productCollection/add:
+    post:
+      tags: [MemberCollectionController]
+      operationId: collectionAdd
+      summary: 添加商品收藏
+      parameters:
+        - { $ref: '#/components/parameters/bearerToken' }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/MemberProductCollection' }
+      responses:
+        '200': { $ref: '#/components/responses/CommonResultResponse' }
+      x-data-type: 'Integer（插入条数）'
+  /member/productCollection/delete:
+    post:
+      tags: [MemberCollectionController]
+      operationId: collectionDelete
+      summary: 删除商品收藏
+      description: 【注意】productId 未加 @RequestParam，缺失时为 null。
+      parameters:
+        - { $ref: '#/components/parameters/bearerToken' }
+        - { name: productId, in: query, required: false, schema: { type: integer, format: int64 } }
+      responses:
+        '200': { $ref: '#/components/responses/CommonResultResponse' }
+      x-data-type: 'Integer（删除条数）'
+  /member/productCollection/list:
+    get:
+      tags: [MemberCollectionController]
+      operationId: collectionList
+      summary: 显示当前用户商品收藏列表
+      parameters:
+        - { $ref: '#/components/parameters/bearerToken' }
+        - { name: pageNum, in: query, required: false, schema: { type: integer, default: 1 } }
+        - { name: pageSize, in: query, required: false, schema: { type: integer, default: 5 } }
+      responses:
+        '200': { $ref: '#/components/responses/CommonResultResponse' }
+      x-data-type: 'CommonPage<MemberProductCollection>'
+  /member/productCollection/detail:
+    get:
+      tags: [MemberCollectionController]
+      operationId: collectionDetail
+      summary: 显示商品收藏详情
+      parameters:
+        - { $ref: '#/components/parameters/bearerToken' }
+        - { name: productId, in: query, required: true, schema: { type: integer, format: int64 } }
+      responses:
+        '200': { $ref: '#/components/responses/CommonResultResponse' }
+      x-data-type: 'MemberProductCollection'
+  /member/productCollection/clear:
+    post:
+      tags: [MemberCollectionController]
+      operationId: collectionClear
+      summary: 清空当前用户商品收藏列表
+      parameters:
+        - { $ref: '#/components/parameters/bearerToken' }
+      responses:
+        '200': { $ref: '#/components/responses/CommonResultResponse' }
+      x-data-type: 'null'
+  /member/readHistory/create:
+    post:
+      tags: [MemberReadHistoryController]
+      operationId: readHistoryCreate
+      summary: 创建浏览记录
+      parameters:
+        - { $ref: '#/components/parameters/bearerToken' }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/MemberReadHistory' }
+      responses:
+        '200': { $ref: '#/components/responses/CommonResultResponse' }
+      x-data-type: 'Integer（插入条数）'
+  /member/readHistory/delete:
+    post:
+      tags: [MemberReadHistoryController]
+      operationId: readHistoryDelete
+      summary: 删除浏览记录
+      description: ids 为 String 列表（Mongo ObjectId），必须显式传 @RequestParam，缺失时 Spring 返回 HTTP 400。
+      parameters:
+        - { $ref: '#/components/parameters/bearerToken' }
+        - { name: ids, in: query, required: true, style: form, explode: false, schema: { type: array, items: { type: string } }, description: 逗号分隔的 ObjectId' }
+      responses:
+        '200': { $ref: '#/components/responses/CommonResultResponse' }
+      x-data-type: 'Integer（删除条数）'
+  /member/readHistory/clear:
+    post:
+      tags: [MemberReadHistoryController]
+      operationId: readHistoryClear
+      summary: 清空浏览记录
+      parameters:
+        - { $ref: '#/components/parameters/bearerToken' }
+      responses:
+        '200': { $ref: '#/components/responses/CommonResultResponse' }
+      x-data-type: 'null'
+  /member/readHistory/list:
+    get:
+      tags: [MemberReadHistoryController]
+      operationId: readHistoryList
+      summary: 分页获取浏览记录
+      parameters:
+        - { $ref: '#/components/parameters/bearerToken' }
+        - { name: pageNum, in: query, required: false, schema: { type: integer, default: 1 } }
+        - { name: pageSize, in: query, required: false, schema: { type: integer, default: 5 } }
+      responses:
+        '200': { $ref: '#/components/responses/CommonResultResponse' }
+      x-data-type: 'CommonPage<MemberReadHistory>'
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+      description: 'jwt.tokenHeader 对应请求头 Authorization，值形如：Bearer {token}'
+  parameters:
+    bearerToken:
+      name: Authorization
+      in: header
+      required: true
+      schema: { type: string }
+      description: 'Bearer {token}，由 /sso/login 获取；缺失或过期返回 code=401（HTTP 仍为 200）'
+  responses:
+    CommonResultResponse:
+      description: '统一响应体（HTTP 200，业务码见 code）'
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/CommonResult' }
+  schemas:
+    CommonResult:
+      type: object
+      description: 通用返回结果封装类
+      properties:
+        code:
+          type: integer
+          format: int64
+          description: '200 成功；500 操作失败；404 参数检验失败；401 未登录；403 无权限'
+          example: 200
+        message:
+          type: string
+          example: 操作成功
+        data:
+          description: 业务数据，具体类型见各接口 x-data-type
+      x-code-enum:
+        '200': 操作成功
+        '500': 操作失败
+        '404': 参数检验失败（业务层常用来表示用户名或密码错误）
+        '401': 暂未登录或 token 已经过期
+        '403': 没有相关权限
+    CommonPage:
+      type: object
+      description: 分页结果封装，pageNum 从 1 开始（PageHelper 语义）
+      properties:
+        pageNum: { type: integer }
+        pageSize: { type: integer }
+        totalPage: { type: integer, format: int64 }
+        total: { type: integer, format: int64 }
+        list: { type: array, items: {} }
+    DefaultErrorBody:
+      type: object
+      description: '未捕获异常时 Spring 默认 /error 结构（HTTP 4xx/5xx，非 CommonResult）'
+      properties:
+        timestamp: { type: string, format: date-time }
+        status: { type: integer }
+        error: { type: string }
+        path: { type: string }
+    OmsCartItem:
+      type: object
+      description: 购物车项。add 时后端会用登录态覆盖 memberId，quantity 无数值校验
+      properties:
+        id: { type: integer, format: int64 }
+        productId: { type: integer, format: int64 }
+        productSkuId: { type: integer, format: int64 }
+        memberId: { type: integer, format: int64, description: 由后端从登录态注入 }
+        quantity: { type: integer, description: 购买数量' }
+        price: { type: number, description: 添加到购物车的价格 }
+        productPic: { type: string, description: 商品主图 }
+        productName: { type: string, description: 商品名称 }
+        productSubTitle: { type: string, description: 商品副标题（卖点） }
+        productSkuCode: { type: string, description: 商品 sku 条码 }
+        memberNickname: { type: string }
+        createDate: { type: string, format: date-time }
+        modifyDate: { type: string, format: date-time }
+        deleteStatus: { type: integer, description: '0 未删除；1 已删除' }
+        productCategoryId: { type: integer, format: int64 }
+        productBrand: { type: string }
+        productSn: { type: string }
+        productAttr: { type: string, description: "商品销售属性，JSON 字符串：[{'key':'颜色','value':'红色'}]" }
+    UmsMemberReceiveAddress:
+      type: object
+      description: 会员收货地址
+      properties:
+        id: { type: integer, format: int64 }
+        memberId: { type: integer, format: int64, description: 由后端从登录态注入 }
+        name: { type: string, description: 收货人名称 }
+        phoneNumber: { type: string }
+        defaultStatus: { type: integer, description: '0 非默认；1 默认' }
+        postCode: { type: string, description: 邮政编码 }
+        province: { type: string, description: 省份/直辖市 }
+        city: { type: string, description: 城市 }
+        region: { type: string, description: 区 }
+        detailAddress: { type: string, description: 详细地址（街道） }
+    MemberBrandAttention:
+      type: object
+      description: 会员品牌关注（MongoDB 文档）
+      properties:
+        id: { type: string, description: Mongo ObjectId }
+        memberId: { type: integer, format: int64 }
+        memberNickname: { type: string }
+        memberIcon: { type: string }
+        brandId: { type: integer, format: int64 }
+        brandName: { type: string }
+        brandLogo: { type: string }
+        brandCity: { type: string }
+        createTime: { type: string, format: date-time }
+    MemberProductCollection:
+      type: object
+      description: 会员商品收藏（MongoDB 文档）
+      properties:
+        id: { type: string, description: Mongo ObjectId }
+        memberId: { type: integer, format: int64 }
+        memberNickname: { type: string }
+        memberIcon: { type: string }
+        productId: { type: integer, format: int64 }
+        productName: { type: string }
+        productPic: { type: string }
+        productSubTitle: { type: string }
+        productPrice: { type: string, description: 注意是字符串类型 }
+        createTime: { type: string, format: date-time }
+    MemberReadHistory:
+      type: object
+      description: 会员商品浏览记录（MongoDB 文档）
+      properties:
+        id: { type: string, description: Mongo ObjectId }
+        memberId: { type: integer, format: int64 }
+        memberNickname: { type: string }
+        memberIcon: { type: string }
+        productId: { type: integer, format: int64 }
+        productName: { type: string }
+        productPic: { type: string }
+        productSubTitle: { type: string }
+        productPrice: { type: string }
+        createTime: { type: string, format: date-time }
+    OrderParam:
+      type: object
+      description: 生成订单入参
+      properties:
+        memberReceiveAddressId: { type: integer, format: int64, description: 收货地址 ID；为空时抛「请选择收货地址！」 }
+        couponId: { type: integer, format: int64, description: 优惠券 ID；可选 }
+        useIntegration: { type: integer, description: 使用的积分数；可选 }
+        payType: { type: integer, description: '支付方式：0 未支付；1 支付宝；2 微信' }
+        cartIds:
+          type: array
+          items: { type: integer, format: int64 }
+          description: 被选中的购物车商品 ID；可通过 /order/generateConfirmOrder 的 cartPromotionItemList 获取
+    AliPayParam:
+      type: object
+      description: 支付宝支付请求参数（以 query 形式绑定）
+      properties:
+        outTradeNo: { type: string, description: 商户订单号，需保持唯一 }
+        subject: { type: string, description: 订单标题 }
+        totalAmount: { type: number, description: 订单总金额（元），精确到小数点后两位 }
+    OmsOrderReturnApplyParam:
+      type: object
+      description: 退货申请入参
+      properties:
+        orderId: { type: integer, format: int64, description: 订单 id }
+        productId: { type: integer, format: int64, description: 退货商品 id }
+        orderSn: { type: string, description: 订单编号 }
+        memberUsername: { type: string, description: 会员用户名 }
+        returnName: { type: string, description: 退货人姓名 }
+        returnPhone: { type: string, description: 退货人电话 }
+        productPic: { type: string, description: 商品图片 }
+        productName: { type: string, description: 商品名称 }
+        productBrand: { type: string, description: 商品品牌 }
+        productAttr: { type: string, description: '商品销售属性：颜色：红色；尺码：xl' }
+        productCount: { type: integer, description: 退货数量 }
+        productPrice: { type: number, description: 商品单价 }
+        productRealPrice: { type: number, description: 商品实际支付单价 }
+        reason: { type: string, description: 原因 }
+        description: { type: string, description: 描述 }
+        proofPics: { type: string, description: 凭证图片，逗号分隔 }
