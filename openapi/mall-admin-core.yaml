@@ -1,0 +1,1533 @@
+openapi: 3.0.3
+info:
+  title: mall-admin 核心接口
+  version: 0.1.0
+  description: |
+    由 AITestApp 依据代码仓 mall（master, dcaa93b）真实源码生成，覆盖 mall-admin 核心 6 个 Controller：
+    UmsAdminController、UmsRoleController、UmsMenuController、PmsBrandController、PmsProductController、OmsOrderController。
+
+    说明（与源码一致，务必注意）：
+    1. 所有接口 HTTP 状态码均为 200，业务结果放在响应体 code 字段：200=操作成功、500=操作失败、404=参数检验失败、401=暂未登录或token已过期、403=没有相关权限（见 mall-common ResultCode）。
+    2. 统一响应体为 CommonResult{code,message,data}；分页数据为 CommonPage{pageNum,pageSize,totalPage,total,list}。
+    3. 鉴权：除 /admin/login、/admin/register、/admin/info、/admin/logout（application.yml secure.ignored.urls 白名单）外，其余接口需在 Authorization 头携带 "Bearer " + token。
+    4. 路径前缀即 Controller 上的 @RequestMapping，未包含网关/前端代理前缀。
+    5. 本次为第一阶段（admin 核心）：PmsProductParam/PmsProductResult/OmsOrderDetail 内嵌的子模型集合（skuStockList、productLadderList、orderItemList 等）暂以 object 占位，字段将在第二阶段展开。
+    6. 遗留问题：OmsOrderController 中 /order/update/receiverInfo 与 /order/update/moneyInfo 两个方法同名（updateReceiverInfo），Java 可编译但可读性差，建议在测试用例中分别覆盖，避免混淆。
+servers:
+  - url: http://localhost:8080
+    description: mall-admin 本地 dev（spring.application.name=mall-admin）
+security:
+  - bearerAuth: []
+tags:
+  - name: UmsAdminController
+    description: 后台用户管理（/admin）
+  - name: UmsRoleController
+    description: 后台用户角色管理（/role）
+  - name: UmsMenuController
+    description: 后台菜单管理（/menu）
+  - name: PmsBrandController
+    description: 商品品牌管理（/brand）
+  - name: PmsProductController
+    description: 商品管理（/product）
+  - name: OmsOrderController
+    description: 订单管理（/order）
+paths:
+  /admin/register:
+    post:
+      tags: [UmsAdminController]
+      summary: 用户注册
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: '#/components/schemas/UmsAdminParam'}
+      responses:
+        '200':
+          description: CommonResult<UmsAdmin>；注册失败返回 code=500
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/CommonResultUmsAdmin'}
+  /admin/login:
+    post:
+      tags: [UmsAdminController]
+      summary: 登录以后返回token
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: '#/components/schemas/UmsAdminLoginParam'}
+      responses:
+        '200':
+          description: 成功 data={token,tokenHead}；用户名或密码错误返回 code=404（validateFailed）
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/CommonResultToken'}
+  /admin/refreshToken:
+    get:
+      tags: [UmsAdminController]
+      summary: 刷新token
+      description: 从请求头 Authorization 取旧 token 换取新 token；token 已过期返回 code=500，message="token已经过期！"
+      responses:
+        '200':
+          description: CommonResultToken；失败 code=500
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/CommonResultToken'}
+  /admin/info:
+    get:
+      tags: [UmsAdminController]
+      summary: 获取当前登录用户信息
+      security: []
+      description: principal 为空时返回 code=401（unauthorized）。白名单放行但业务仍依赖登录态。
+      responses:
+        '200':
+          description: CommonResult<AdminInfo>；未登录 code=401
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/CommonResultAdminInfo'}
+  /admin/logout:
+    post:
+      tags: [UmsAdminController]
+      summary: 登出功能
+      responses:
+        '200':
+          description: CommonResult，data 固定为 null
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/CommonResult'}
+  /admin/list:
+    get:
+      tags: [UmsAdminController]
+      summary: 根据用户名或姓名分页获取用户列表
+      parameters:
+        - name: keyword
+          in: query
+          required: false
+          schema: {type: string}
+          description: 用户名/姓名关键词
+        - $ref: '#/components/parameters/PageSize'
+        - $ref: '#/components/parameters/PageNum'
+      responses:
+        '200':
+          description: CommonResult<CommonPage<UmsAdmin>>
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/CommonResultCommonPageUmsAdmin'}
+  '/admin/{id}':
+    get:
+      tags: [UmsAdminController]
+      summary: 获取指定用户信息
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: {type: integer, format: int64}
+      responses:
+        '200':
+          description: CommonResult<UmsAdmin>；用户不存在时 data 为 null
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/CommonResultUmsAdmin'}
+  '/admin/update/{id}':
+    post:
+      tags: [UmsAdminController]
+      summary: 修改指定用户信息
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: {type: integer, format: int64}
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: '#/components/schemas/UmsAdmin'}
+      responses:
+        '200':
+          description: CommonResult，成功 data=更新条数；失败 code=500
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/CommonResult'}
+  /admin/updatePassword:
+    post:
+      tags: [UmsAdminController]
+      summary: 修改指定用户密码
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: '#/components/schemas/UpdateAdminPasswordParam'}
+      responses:
+        '200':
+          description: |
+            CommonResult；失败 message 区分：提交参数不合法 / 找不到该用户 / 旧密码错误（均为 code=500）
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/CommonResult'}
+  '/admin/delete/{id}':
+    post:
+      tags: [UmsAdminController]
+      summary: 删除指定用户信息
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: {type: integer, format: int64}
+      responses:
+        '200':
+          description: CommonResult，成功 data=删除条数
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/CommonResult'}
+  '/admin/updateStatus/{id}':
+    post:
+      tags: [UmsAdminController]
+      summary: 修改帐号状态
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: {type: integer, format: int64}
+        - name: status
+          in: query
+          required: true
+          schema: {type: integer, enum: [0, 1]}
+          description: 帐号启用状态：0->禁用；1->启用
+      responses:
+        '200':
+          description: CommonResult，成功 data=更新条数
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/CommonResult'}
+  /admin/role/update:
+    post:
+      tags: [UmsAdminController]
+      summary: 给用户分配角色
+      parameters:
+        - name: adminId
+          in: query
+          required: true
+          schema: {type: integer, format: int64}
+        - name: roleIds
+          in: query
+          required: true
+          style: form
+          explode: true
+          schema:
+            type: array
+            items: {type: integer, format: int64}
+      responses:
+        '200':
+          description: CommonResult，count>=0 即返回成功（含清空角色的 0 条场景）
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/CommonResult'}
+  '/admin/role/{adminId}':
+    get:
+      tags: [UmsAdminController]
+      summary: 获取指定用户的角色
+      parameters:
+        - name: adminId
+          in: path
+          required: true
+          schema: {type: integer, format: int64}
+      responses:
+        '200':
+          description: CommonResult<List<UmsRole>>
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/CommonResultUmsRoleList'}
+  /role/create:
+    post:
+      tags: [UmsRoleController]
+      summary: 添加角色
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: '#/components/schemas/UmsRole'}
+      responses:
+        '200':
+          description: CommonResult，成功 data=创建条数
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/CommonResult'}
+  '/role/update/{id}':
+    post:
+      tags: [UmsRoleController]
+      summary: 修改角色
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: {type: integer, format: int64}
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: '#/components/schemas/UmsRole'}
+      responses:
+        '200':
+          description: CommonResult，成功 data=更新条数
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/CommonResult'}
+  /role/delete:
+    post:
+      tags: [UmsRoleController]
+      summary: 批量删除角色
+      parameters:
+        - $ref: '#/components/parameters/Ids'
+      responses:
+        '200':
+          description: CommonResult，成功 data=删除条数
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/CommonResult'}
+  /role/listAll:
+    get:
+      tags: [UmsRoleController]
+      summary: 获取所有角色
+      responses:
+        '200':
+          description: CommonResult<List<UmsRole>>
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/CommonResultUmsRoleList'}
+  /role/list:
+    get:
+      tags: [UmsRoleController]
+      summary: 根据角色名称分页获取角色列表
+      parameters:
+        - name: keyword
+          in: query
+          required: false
+          schema: {type: string}
+        - $ref: '#/components/parameters/PageSize'
+        - $ref: '#/components/parameters/PageNum'
+      responses:
+        '200':
+          description: CommonResult<CommonPage<UmsRole>>
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/CommonResultCommonPageUmsRole'}
+  '/role/updateStatus/{id}':
+    post:
+      tags: [UmsRoleController]
+      summary: 修改角色状态
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: {type: integer, format: int64}
+        - name: status
+          in: query
+          required: true
+          schema: {type: integer, enum: [0, 1]}
+      responses:
+        '200':
+          description: CommonResult，成功 data=更新条数
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/CommonResult'}
+  '/role/listMenu/{roleId}':
+    get:
+      tags: [UmsRoleController]
+      summary: 获取角色相关菜单
+      parameters:
+        - name: roleId
+          in: path
+          required: true
+          schema: {type: integer, format: int64}
+      responses:
+        '200':
+          description: CommonResult<List<UmsMenu>>
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/CommonResultUmsMenuList'}
+  '/role/listResource/{roleId}':
+    get:
+      tags: [UmsRoleController]
+      summary: 获取角色相关资源
+      parameters:
+        - name: roleId
+          in: path
+          required: true
+          schema: {type: integer, format: int64}
+      responses:
+        '200':
+          description: CommonResult<List<UmsResource>>
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/CommonResultUmsResourceList'}
+  /role/allocMenu:
+    post:
+      tags: [UmsRoleController]
+      summary: 给角色分配菜单
+      parameters:
+        - name: roleId
+          in: query
+          required: true
+          schema: {type: integer, format: int64}
+        - name: menuIds
+          in: query
+          required: true
+          style: form
+          explode: true
+          schema:
+            type: array
+            items: {type: integer, format: int64}
+      responses:
+        '200':
+          description: CommonResult，恒返回成功（无失败分支）
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/CommonResult'}
+  /role/allocResource:
+    post:
+      tags: [UmsRoleController]
+      summary: 给角色分配资源
+      parameters:
+        - name: roleId
+          in: query
+          required: true
+          schema: {type: integer, format: int64}
+        - name: resourceIds
+          in: query
+          required: true
+          style: form
+          explode: true
+          schema:
+            type: array
+            items: {type: integer, format: int64}
+      responses:
+        '200':
+          description: CommonResult，恒返回成功（无失败分支）
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/CommonResult'}
+  /menu/create:
+    post:
+      tags: [UmsMenuController]
+      summary: 添加后台菜单
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: '#/components/schemas/UmsMenu'}
+      responses:
+        '200':
+          description: CommonResult，成功 data=创建条数
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/CommonResult'}
+  '/menu/update/{id}':
+    post:
+      tags: [UmsMenuController]
+      summary: 修改后台菜单
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: {type: integer, format: int64}
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: '#/components/schemas/UmsMenu'}
+      responses:
+        '200':
+          description: CommonResult，成功 data=更新条数
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/CommonResult'}
+  '/menu/{id}':
+    get:
+      tags: [UmsMenuController]
+      summary: 根据ID获取菜单详情
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: {type: integer, format: int64}
+      responses:
+        '200':
+          description: CommonResult<UmsMenu>；不存在时 data 为 null
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/CommonResultUmsMenu'}
+  '/menu/delete/{id}':
+    post:
+      tags: [UmsMenuController]
+      summary: 根据ID删除后台菜单
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: {type: integer, format: int64}
+      responses:
+        '200':
+          description: CommonResult，成功 data=删除条数
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/CommonResult'}
+  '/menu/list/{parentId}':
+    get:
+      tags: [UmsMenuController]
+      summary: 分页查询后台菜单
+      parameters:
+        - name: parentId
+          in: path
+          required: true
+          schema: {type: integer, format: int64}
+          description: 父级ID，顶级传 0
+        - $ref: '#/components/parameters/PageSize'
+        - $ref: '#/components/parameters/PageNum'
+      responses:
+        '200':
+          description: CommonResult<CommonPage<UmsMenu>>
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/CommonResultCommonPageUmsMenu'}
+  /menu/treeList:
+    get:
+      tags: [UmsMenuController]
+      summary: 树形结构返回所有菜单列表
+      responses:
+        '200':
+          description: CommonResult<List<UmsMenuNode>>
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/CommonResultUmsMenuNodeList'}
+  '/menu/updateHidden/{id}':
+    post:
+      tags: [UmsMenuController]
+      summary: 修改菜单显示状态
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: {type: integer, format: int64}
+        - name: hidden
+          in: query
+          required: true
+          schema: {type: integer, enum: [0, 1]}
+          description: 0->显示；1->隐藏
+      responses:
+        '200':
+          description: CommonResult，成功 data=更新条数
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/CommonResult'}
+  /brand/listAll:
+    get:
+      tags: [PmsBrandController]
+      summary: 获取全部品牌列表
+      responses:
+        '200':
+          description: CommonResult<List<PmsBrand>>
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/CommonResultPmsBrandList'}
+  /brand/create:
+    post:
+      tags: [PmsBrandController]
+      summary: 添加品牌
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: '#/components/schemas/PmsBrandParam'}
+      responses:
+        '200':
+          description: CommonResult；仅 count==1 视为成功，否则 code=500
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/CommonResult'}
+  '/brand/update/{id}':
+    post:
+      tags: [PmsBrandController]
+      summary: 更新品牌
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: {type: integer, format: int64}
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: '#/components/schemas/PmsBrandParam'}
+      responses:
+        '200':
+          description: CommonResult；仅 count==1 视为成功
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/CommonResult'}
+  '/brand/delete/{id}':
+    get:
+      tags: [PmsBrandController]
+      summary: 删除品牌（注意是 GET）
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: {type: integer, format: int64}
+      responses:
+        '200':
+          description: CommonResult，成功 data=null
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/CommonResult'}
+  /brand/list:
+    get:
+      tags: [PmsBrandController]
+      summary: 根据品牌名称分页获取品牌列表
+      parameters:
+        - name: keyword
+          in: query
+          required: false
+          schema: {type: string}
+        - name: showStatus
+          in: query
+          required: false
+          schema: {type: integer, enum: [0, 1]}
+          description: 显示状态：0->不显示；1->显示
+        - $ref: '#/components/parameters/PageNum'
+        - $ref: '#/components/parameters/PageSize'
+      responses:
+        '200':
+          description: CommonResult<CommonPage<PmsBrand>>
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/CommonResultCommonPagePmsBrand'}
+  '/brand/{id}':
+    get:
+      tags: [PmsBrandController]
+      summary: 根据编号查询品牌信息
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: {type: integer, format: int64}
+      responses:
+        '200':
+          description: CommonResult<PmsBrand>
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/CommonResultPmsBrand'}
+  /brand/delete/batch:
+    post:
+      tags: [PmsBrandController]
+      summary: 批量删除品牌
+      parameters:
+        - $ref: '#/components/parameters/Ids'
+      responses:
+        '200':
+          description: CommonResult，成功 data=删除条数
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/CommonResult'}
+  /brand/update/showStatus:
+    post:
+      tags: [PmsBrandController]
+      summary: 批量更新显示状态
+      parameters:
+        - $ref: '#/components/parameters/Ids'
+        - name: showStatus
+          in: query
+          required: true
+          schema: {type: integer, enum: [0, 1]}
+      responses:
+        '200':
+          description: CommonResult，成功 data=更新条数
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/CommonResult'}
+  /brand/update/factoryStatus:
+    post:
+      tags: [PmsBrandController]
+      summary: 批量更新厂家制造商状态
+      parameters:
+        - $ref: '#/components/parameters/Ids'
+        - name: factoryStatus
+          in: query
+          required: true
+          schema: {type: integer, enum: [0, 1]}
+      responses:
+        '200':
+          description: CommonResult，成功 data=更新条数
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/CommonResult'}
+  /product/create:
+    post:
+      tags: [PmsProductController]
+      summary: 创建商品
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: '#/components/schemas/PmsProductParam'}
+      responses:
+        '200':
+          description: CommonResult，成功 data=创建条数
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/CommonResult'}
+  '/product/updateInfo/{id}':
+    get:
+      tags: [PmsProductController]
+      summary: 根据商品id获取商品编辑信息
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: {type: integer, format: int64}
+      responses:
+        '200':
+          description: CommonResult<PmsProductResult>
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/CommonResultPmsProductResult'}
+  '/product/update/{id}':
+    post:
+      tags: [PmsProductController]
+      summary: 更新商品
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: {type: integer, format: int64}
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: '#/components/schemas/PmsProductParam'}
+      responses:
+        '200':
+          description: CommonResult，成功 data=更新条数
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/CommonResult'}
+  /product/list:
+    get:
+      tags: [PmsProductController]
+      summary: 查询商品
+      description: 查询条件由 PmsProductQueryParam 以 query 形式绑定（非 @RequestBody）
+      parameters:
+        - name: publishStatus
+          in: query
+          required: false
+          schema: {type: integer, enum: [0, 1]}
+          description: 上架状态：0->下架；1->上架
+        - name: verifyStatus
+          in: query
+          required: false
+          schema: {type: integer, enum: [0, 1]}
+          description: 审核状态：0->未审核；1->审核通过
+        - name: keyword
+          in: query
+          required: false
+          schema: {type: string}
+          description: 商品名称模糊关键字
+        - name: productSn
+          in: query
+          required: false
+          schema: {type: string}
+        - name: productCategoryId
+          in: query
+          required: false
+          schema: {type: integer, format: int64}
+        - name: brandId
+          in: query
+          required: false
+          schema: {type: integer, format: int64}
+        - $ref: '#/components/parameters/PageSize'
+        - $ref: '#/components/parameters/PageNum'
+      responses:
+        '200':
+          description: CommonResult<CommonPage<PmsProduct>>
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/CommonResultCommonPagePmsProduct'}
+  /product/simpleList:
+    get:
+      tags: [PmsProductController]
+      summary: 根据商品名称或货号模糊查询
+      parameters:
+        - name: keyword
+          in: query
+          required: false
+          schema: {type: string}
+      responses:
+        '200':
+          description: CommonResult<List<PmsProduct>>
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/CommonResultPmsProductList'}
+  /product/update/verifyStatus:
+    post:
+      tags: [PmsProductController]
+      summary: 批量修改审核状态
+      parameters:
+        - $ref: '#/components/parameters/Ids'
+        - name: verifyStatus
+          in: query
+          required: true
+          schema: {type: integer, enum: [0, 1]}
+        - name: detail
+          in: query
+          required: true
+          schema: {type: string}
+          description: 审核详情
+      responses:
+        '200':
+          description: CommonResult，成功 data=更新条数
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/CommonResult'}
+  /product/update/publishStatus:
+    post:
+      tags: [PmsProductController]
+      summary: 批量上下架商品
+      parameters:
+        - $ref: '#/components/parameters/Ids'
+        - name: publishStatus
+          in: query
+          required: true
+          schema: {type: integer, enum: [0, 1]}
+      responses:
+        '200':
+          description: CommonResult，成功 data=更新条数
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/CommonResult'}
+  /product/update/recommendStatus:
+    post:
+      tags: [PmsProductController]
+      summary: 批量推荐商品
+      parameters:
+        - $ref: '#/components/parameters/Ids'
+        - name: recommendStatus
+          in: query
+          required: true
+          schema: {type: integer, enum: [0, 1]}
+      responses:
+        '200':
+          description: CommonResult，成功 data=更新条数
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/CommonResult'}
+  /product/update/newStatus:
+    post:
+      tags: [PmsProductController]
+      summary: 批量设为新品
+      parameters:
+        - $ref: '#/components/parameters/Ids'
+        - name: newStatus
+          in: query
+          required: true
+          schema: {type: integer, enum: [0, 1]}
+      responses:
+        '200':
+          description: CommonResult，成功 data=更新条数
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/CommonResult'}
+  /product/update/deleteStatus:
+    post:
+      tags: [PmsProductController]
+      summary: 批量修改删除状态
+      parameters:
+        - $ref: '#/components/parameters/Ids'
+        - name: deleteStatus
+          in: query
+          required: true
+          schema: {type: integer, enum: [0, 1]}
+      responses:
+        '200':
+          description: CommonResult，成功 data=更新条数
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/CommonResult'}
+  /order/list:
+    get:
+      tags: [OmsOrderController]
+      summary: 查询订单
+      description: 查询条件由 OmsOrderQueryParam 以 query 形式绑定
+      parameters:
+        - name: orderSn
+          in: query
+          required: false
+          schema: {type: string}
+          description: 订单编号
+        - name: receiverKeyword
+          in: query
+          required: false
+          schema: {type: string}
+          description: 收货人姓名/号码
+        - name: status
+          in: query
+          required: false
+          schema: {type: integer, enum: [0, 1, 2, 3, 4, 5]}
+          description: 0->待付款；1->待发货；2->已发货；3->已完成；4->已关闭；5->无效订单
+        - name: orderType
+          in: query
+          required: false
+          schema: {type: integer, enum: [0, 1]}
+        - name: sourceType
+          in: query
+          required: false
+          schema: {type: integer, enum: [0, 1]}
+        - name: createTime
+          in: query
+          required: false
+          schema: {type: string}
+          description: 订单提交时间（字符串直传）
+        - $ref: '#/components/parameters/PageSize'
+        - $ref: '#/components/parameters/PageNum'
+      responses:
+        '200':
+          description: CommonResult<CommonPage<OmsOrder>>
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/CommonResultCommonPageOmsOrder'}
+  /order/update/delivery:
+    post:
+      tags: [OmsOrderController]
+      summary: 批量发货
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: array
+              items: {$ref: '#/components/schemas/OmsOrderDeliveryParam'}
+      responses:
+        '200':
+          description: CommonResult，成功 data=更新条数
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/CommonResult'}
+  /order/update/close:
+    post:
+      tags: [OmsOrderController]
+      summary: 批量关闭订单
+      parameters:
+        - $ref: '#/components/parameters/Ids'
+        - name: note
+          in: query
+          required: true
+          schema: {type: string}
+          description: 关闭备注
+      responses:
+        '200':
+          description: CommonResult，成功 data=更新条数
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/CommonResult'}
+  /order/delete:
+    post:
+      tags: [OmsOrderController]
+      summary: 批量删除订单
+      parameters:
+        - $ref: '#/components/parameters/Ids'
+      responses:
+        '200':
+          description: CommonResult，成功 data=删除条数
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/CommonResult'}
+  '/order/{id}':
+    get:
+      tags: [OmsOrderController]
+      summary: '获取订单详情：订单信息、商品信息、操作记录'
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: {type: integer, format: int64}
+      responses:
+        '200':
+          description: CommonResult<OmsOrderDetail>
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/CommonResultOmsOrderDetail'}
+  /order/update/receiverInfo:
+    post:
+      tags: [OmsOrderController]
+      summary: 修改收货人信息
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: '#/components/schemas/OmsReceiverInfoParam'}
+      responses:
+        '200':
+          description: CommonResult，成功 data=更新条数
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/CommonResult'}
+  /order/update/moneyInfo:
+    post:
+      tags: [OmsOrderController]
+      summary: 修改订单费用信息
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: '#/components/schemas/OmsMoneyInfoParam'}
+      responses:
+        '200':
+          description: CommonResult，成功 data=更新条数
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/CommonResult'}
+  /order/update/note:
+    post:
+      tags: [OmsOrderController]
+      summary: 备注订单
+      parameters:
+        - name: id
+          in: query
+          required: true
+          schema: {type: integer, format: int64}
+        - name: note
+          in: query
+          required: true
+          schema: {type: string}
+        - name: status
+          in: query
+          required: true
+          schema: {type: integer}
+          description: 订单状态：0->待付款；1->待发货；2->已发货；3->已完成；4->已关闭；5->无效订单
+      responses:
+        '200':
+          description: CommonResult，成功 data=更新条数
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/CommonResult'}
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+      description: 请求头 Authorization: Bearer {token}（jwt.tokenHeader=Authorization，jwt.tokenHead='Bearer '）
+  parameters:
+    PageNum:
+      name: pageNum
+      in: query
+      required: false
+      schema: {type: integer, default: 1, minimum: 1}
+    PageSize:
+      name: pageSize
+      in: query
+      required: false
+      schema: {type: integer, default: 5, minimum: 1}
+    Ids:
+      name: ids
+      in: query
+      required: true
+      style: form
+      explode: true
+      schema:
+        type: array
+        items: {type: integer, format: int64}
+      description: 主键ID集合，形如 ids=1&ids=2
+  schemas:
+    CommonResult:
+      type: object
+      description: 通用返回结果（mall-common CommonResult<T>），HTTP 状态恒为 200
+      properties:
+        code:
+          type: integer
+          format: int64
+          description: 200 操作成功 / 500 操作失败 / 404 参数检验失败 / 401 暂未登录或token已过期 / 403 没有相关权限
+          example: 200
+        message:
+          type: string
+          example: 操作成功
+        data:
+          type: object
+          nullable: true
+          description: 业务数据，失败时为 null
+    CommonPage:
+      type: object
+      description: 通用分页封装（mall-common CommonPage<T>）
+      properties:
+        pageNum:
+          type: integer
+          example: 1
+        pageSize:
+          type: integer
+          example: 5
+        totalPage:
+          type: integer
+          example: 3
+        total:
+          type: integer
+          format: int64
+          example: 15
+        list:
+          type: array
+          items:
+            type: object
+    UmsAdminParam:
+      type: object
+      description: 用户注册参数（UmsAdminParam）
+      required: [username, password]
+      properties:
+        username: {type: string, description: 用户名}
+        password: {type: string, description: 密码}
+        icon: {type: string, description: 用户头像}
+        email: {type: string, format: email, description: 邮箱（@Email 校验）}
+        nickName: {type: string, description: 用户昵称}
+        note: {type: string, description: 备注}
+    UmsAdminLoginParam:
+      type: object
+      description: 用户登录参数（UmsAdminLoginParam）
+      required: [username, password]
+      properties:
+        username: {type: string, description: 用户名}
+        password: {type: string, description: 密码}
+    UpdateAdminPasswordParam:
+      type: object
+      description: 修改用户密码参数（UpdateAdminPasswordParam）
+      required: [username, oldPassword, newPassword]
+      properties:
+        username: {type: string, description: 用户名}
+        oldPassword: {type: string, description: 旧密码}
+        newPassword: {type: string, description: 新密码}
+    UmsAdmin:
+      type: object
+      properties:
+        id: {type: integer, format: int64}
+        username: {type: string}
+        password: {type: string}
+        icon: {type: string, description: 头像}
+        email: {type: string, description: 邮箱}
+        nickName: {type: string, description: 昵称}
+        note: {type: string, description: 备注信息}
+        createTime: {type: string, format: date-time, description: 创建时间}
+        loginTime: {type: string, format: date-time, description: 最后登录时间}
+        status: {type: integer, enum: [0, 1], description: 帐号启用状态：0->禁用；1->启用}
+    UmsRole:
+      type: object
+      properties:
+        id: {type: integer, format: int64}
+        name: {type: string, description: 名称}
+        description: {type: string, description: 描述}
+        adminCount: {type: integer, description: 后台用户数量}
+        createTime: {type: string, format: date-time, description: 创建时间}
+        status: {type: integer, enum: [0, 1], description: 启用状态：0->禁用；1->启用}
+        sort: {type: integer}
+    UmsMenu:
+      type: object
+      properties:
+        id: {type: integer, format: int64}
+        parentId: {type: integer, format: int64, description: 父级ID}
+        createTime: {type: string, format: date-time, description: 创建时间}
+        title: {type: string, description: 菜单名称}
+        level: {type: integer, description: 菜单级数}
+        sort: {type: integer, description: 菜单排序}
+        name: {type: string, description: 前端名称}
+        icon: {type: string, description: 前端图标}
+        hidden: {type: integer, enum: [0, 1], description: 前端隐藏}
+    UmsMenuNode:
+      allOf:
+        - $ref: '#/components/schemas/UmsMenu'
+        - type: object
+          properties:
+            children:
+              type: array
+              description: 子级菜单
+              items: {$ref: '#/components/schemas/UmsMenuNode'}
+    UmsResource:
+      type: object
+      properties:
+        id: {type: integer, format: int64}
+        createTime: {type: string, format: date-time, description: 创建时间}
+        name: {type: string, description: 资源名称}
+        url: {type: string, description: 资源URL}
+        description: {type: string, description: 描述}
+        categoryId: {type: integer, format: int64, description: 资源分类ID}
+    PmsBrand:
+      type: object
+      properties:
+        id: {type: integer, format: int64}
+        name: {type: string}
+        firstLetter: {type: string, description: 首字母}
+        sort: {type: integer}
+        factoryStatus: {type: integer, enum: [0, 1], description: 是否为品牌制造商：0->不是；1->是}
+        showStatus: {type: integer, enum: [0, 1], description: 显示状态}
+        productCount: {type: integer, description: 产品数量}
+        productCommentCount: {type: integer, description: 产品评论数量}
+        logo: {type: string, description: 品牌logo}
+        bigPic: {type: string, description: 专区大图}
+        brandStory: {type: string, description: 品牌故事}
+    PmsBrandParam:
+      type: object
+      description: 品牌请求参数（PmsBrandParam）
+      required: [name, logo]
+      properties:
+        name: {type: string, description: 品牌名称}
+        firstLetter: {type: string, description: 品牌首字母}
+        sort: {type: integer, minimum: 0, description: 排序字段（@Min(0)）}
+        factoryStatus: {type: integer, enum: [0, 1], description: 是否为厂家制造商（FlagValidator 仅允许 0/1）}
+        showStatus: {type: integer, enum: [0, 1], description: 是否进行显示（FlagValidator 仅允许 0/1）}
+        logo: {type: string, description: 品牌logo}
+        bigPic: {type: string, description: 品牌大图}
+        brandStory: {type: string, description: 品牌故事}
+    PmsProduct:
+      type: object
+      description: 商品（PmsProduct，字段取自 mall-mbg 模型；detailDesc/detailHtml 等详情字段以源码为准）
+      properties:
+        id: {type: integer, format: int64}
+        brandId: {type: integer, format: int64}
+        productCategoryId: {type: integer, format: int64}
+        feightTemplateId: {type: integer, format: int64, description: 运费模板ID}
+        productAttributeCategoryId: {type: integer, format: int64}
+        name: {type: string}
+        pic: {type: string}
+        productSn: {type: string, description: 货号}
+        deleteStatus: {type: integer, enum: [0, 1], description: 删除状态：0->未删除；1->已删除}
+        publishStatus: {type: integer, enum: [0, 1], description: 上架状态：0->下架；1->上架}
+        newStatus: {type: integer, enum: [0, 1], description: 新品状态：0->不是新品；1->新品}
+        recommandStatus: {type: integer, enum: [0, 1], description: 推荐状态：0->不推荐；1->推荐}
+        verifyStatus: {type: integer, enum: [0, 1], description: 审核状态：0->未审核；1->审核通过}
+        sort: {type: integer, description: 排序}
+        sale: {type: integer, description: 销量}
+        price: {type: number, format: bigdecimal}
+        promotionPrice: {type: number, format: bigdecimal, description: 促销价格}
+        giftGrowth: {type: integer, description: 赠送的成长值}
+        giftPoint: {type: integer, description: 赠送的积分}
+        usePointLimit: {type: integer, description: 限制使用的积分数}
+        subTitle: {type: string, description: 副标题}
+        originalPrice: {type: number, format: bigdecimal, description: 市场价}
+        stock: {type: integer, description: 库存}
+        lowStock: {type: integer, description: 库存预警值}
+        unit: {type: string, description: 单位}
+        weight: {type: number, format: bigdecimal, description: 商品重量，默认为克}
+        previewStatus: {type: integer, enum: [0, 1], description: 是否为预告商品：0->不是；1->是}
+        serviceIds: {type: string, description: 以逗号分割的产品服务：1->无忧退货；2->快速退款；3->免费包邮}
+        keywords: {type: string}
+        note: {type: string}
+        albumPics: {type: string, description: 画册图片，连产品图片限制为5张，以逗号分割}
+        detailTitle: {type: string}
+    PmsProductParam:
+      description: 创建/修改商品请求参数（PmsProductParam extends PmsProduct）
+      allOf:
+        - $ref: '#/components/schemas/PmsProduct'
+        - type: object
+          properties:
+            productLadderList:
+              type: array
+              description: 商品阶梯价格设置（PmsProductLadder，字段待展开）
+              items: {type: object}
+            productFullReductionList:
+              type: array
+              description: 商品满减价格设置（PmsProductFullReduction，字段待展开）
+              items: {type: object}
+            memberPriceList:
+              type: array
+              description: 商品会员价格设置（PmsMemberPrice，字段待展开）
+              items: {type: object}
+            skuStockList:
+              type: array
+              description: 商品sku库存信息（PmsSkuStock，字段待展开）
+              items: {type: object}
+            productAttributeValueList:
+              type: array
+              description: 商品参数及自定义规格属性（PmsProductAttributeValue，字段待展开）
+              items: {type: object}
+            subjectProductRelationList:
+              type: array
+              description: 专题和商品关系（CmsSubjectProductRelation，字段待展开）
+              items: {type: object}
+            prefrenceAreaProductRelationList:
+              type: array
+              description: 优选专区和商品关系（CmsPrefrenceAreaProductRelation，字段待展开）
+              items: {type: object}
+    PmsProductResult:
+      description: 商品编辑信息（PmsProductResult extends PmsProductParam）
+      allOf:
+        - $ref: '#/components/schemas/PmsProductParam'
+        - type: object
+          properties:
+            cateParentId: {type: integer, format: int64, description: 商品所选分类的父id}
+    OmsOrder:
+      type: object
+      properties:
+        id: {type: integer, format: int64, description: 订单id}
+        memberId: {type: integer, format: int64}
+        couponId: {type: integer, format: int64}
+        orderSn: {type: string, description: 订单编号}
+        createTime: {type: string, format: date-time, description: 提交时间}
+        memberUsername: {type: string, description: 用户帐号}
+        totalAmount: {type: number, format: bigdecimal, description: 订单总金额}
+        payAmount: {type: number, format: bigdecimal, description: 应付金额（实际支付金额）}
+        freightAmount: {type: number, format: bigdecimal, description: 运费金额}
+        promotionAmount: {type: number, format: bigdecimal, description: 促销优化金额}
+        integrationAmount: {type: number, format: bigdecimal, description: 积分抵扣金额}
+        couponAmount: {type: number, format: bigdecimal, description: 优惠券抵扣金额}
+        discountAmount: {type: number, format: bigdecimal, description: 管理员后台调整订单使用的折扣金额}
+        payType: {type: integer, enum: [0, 1, 2], description: 支付方式：0->未支付；1->支付宝；2->微信}
+        sourceType: {type: integer, enum: [0, 1], description: 订单来源：0->PC订单；1->app订单}
+        status: {type: integer, enum: [0, 1, 2, 3, 4, 5], description: 订单状态：0->待付款；1->待发货；2->已发货；3->已完成；4->已关闭；5->无效订单}
+        orderType: {type: integer, enum: [0, 1], description: 订单类型：0->正常订单；1->秒杀订单}
+        deliveryCompany: {type: string, description: 物流公司（配送方式）}
+        deliverySn: {type: string, description: 物流单号}
+        autoConfirmDay: {type: integer, description: 自动确认时间（天）}
+        integration: {type: integer, description: 可以获得的积分}
+        growth: {type: integer, description: 可以活动的成长值}
+        promotionInfo: {type: string, description: 活动信息}
+        billType: {type: integer, enum: [0, 1, 2], description: 发票类型：0->不开发票；1->电子发票；2->纸质发票}
+        billHeader: {type: string, description: 发票抬头}
+        billContent: {type: string, description: 发票内容}
+        billReceiverPhone: {type: string, description: 收票人电话}
+        billReceiverEmail: {type: string, description: 收票人邮箱}
+        receiverName: {type: string, description: 收货人姓名}
+        receiverPhone: {type: string, description: 收货人电话}
+        receiverPostCode: {type: string, description: 收货人邮编}
+        receiverProvince: {type: string, description: 省份/直辖市}
+        receiverCity: {type: string, description: 城市}
+        receiverRegion: {type: string, description: 区}
+        receiverDetailAddress: {type: string, description: 详细地址}
+        note: {type: string, description: 订单备注}
+        confirmStatus: {type: integer, enum: [0, 1], description: 确认收货状态：0->未确认；1->已确认}
+        deleteStatus: {type: integer, enum: [0, 1], description: 删除状态：0->未删除；1->已删除}
+        useIntegration: {type: integer, description: 下单时使用的积分}
+        paymentTime: {type: string, format: date-time, description: 支付时间}
+        deliveryTime: {type: string, format: date-time, description: 发货时间}
+        receiveTime: {type: string, format: date-time, description: 确认收货时间}
+        commentTime: {type: string, format: date-time, description: 评价时间}
+        modifyTime: {type: string, format: date-time, description: 修改时间}
+    OmsOrderDetail:
+      description: 订单详情（OmsOrderDetail extends OmsOrder）
+      allOf:
+        - $ref: '#/components/schemas/OmsOrder'
+        - type: object
+          properties:
+            orderItemList:
+              type: array
+              description: 订单商品列表（OmsOrderItem，字段待展开）
+              items: {type: object}
+            historyList:
+              type: array
+              description: 订单操作记录列表（OmsOrderOperateHistory，字段待展开）
+              items: {type: object}
+    OmsOrderDeliveryParam:
+      type: object
+      description: 订单发货参数（OmsOrderDeliveryParam）
+      properties:
+        orderId: {type: integer, format: int64, description: 订单id}
+        deliveryCompany: {type: string, description: 物流公司}
+        deliverySn: {type: string, description: 物流单号}
+    OmsReceiverInfoParam:
+      type: object
+      description: 修改收货人信息参数（OmsReceiverInfoParam）
+      properties:
+        orderId: {type: integer, format: int64, description: 订单ID}
+        receiverName: {type: string, description: 收货人姓名}
+        receiverPhone: {type: string, description: 收货人电话}
+        receiverPostCode: {type: string, description: 收货人邮编}
+        receiverDetailAddress: {type: string, description: 详细地址}
+        receiverProvince: {type: string, description: 省份/直辖市}
+        receiverCity: {type: string, description: 城市}
+        receiverRegion: {type: string, description: 区}
+        status: {type: integer, description: 订单状态：0->待付款；1->待发货；2->已发货；3->已完成；4->已关闭；5->无效订单}
+    OmsMoneyInfoParam:
+      type: object
+      description: 修改订单费用信息参数（OmsMoneyInfoParam）
+      properties:
+        orderId: {type: integer, format: int64, description: 订单ID}
+        freightAmount: {type: number, format: bigdecimal, description: 运费金额}
+        discountAmount: {type: number, format: bigdecimal, description: 管理员后台调整订单所使用的折扣金额}
+        status: {type: integer, description: 订单状态}
+    CommonResultToken:
+      allOf:
+        - $ref: '#/components/schemas/CommonResult'
+        - type: object
+          properties:
+            data:
+              type: object
+              properties:
+                token: {type: string, description: JWT}
+                tokenHead: {type: string, example: 'Bearer '}
+    CommonResultAdminInfo:
+      allOf:
+        - $ref: '#/components/schemas/CommonResult'
+        - type: object
+          properties:
+            data:
+              type: object
+              description: 当前登录用户信息（/admin/info 组装）
+              properties:
+                username: {type: string}
+                icon: {type: string}
+                menus:
+                  type: array
+                  items: {$ref: '#/components/schemas/UmsMenu'}
+                roles:
+                  type: array
+                  items: {type: string}
+    CommonResultUmsAdmin:
+      allOf:
+        - $ref: '#/components/schemas/CommonResult'
+        - type: object
+          properties:
+            data: {$ref: '#/components/schemas/UmsAdmin'}
+    CommonResultUmsRoleList:
+      allOf:
+        - $ref: '#/components/schemas/CommonResult'
+        - type: object
+          properties:
+            data:
+              type: array
+              items: {$ref: '#/components/schemas/UmsRole'}
+    CommonResultUmsMenu:
+      allOf:
+        - $ref: '#/components/schemas/CommonResult'
+        - type: object
+          properties:
+            data: {$ref: '#/components/schemas/UmsMenu'}
+    CommonResultUmsMenuList:
+      allOf:
+        - $ref: '#/components/schemas/CommonResult'
+        - type: object
+          properties:
+            data:
+              type: array
+              items: {$ref: '#/components/schemas/UmsMenu'}
+    CommonResultUmsMenuNodeList:
+      allOf:
+        - $ref: '#/components/schemas/CommonResult'
+        - type: object
+          properties:
+            data:
+              type: array
+              items: {$ref: '#/components/schemas/UmsMenuNode'}
+    CommonResultUmsResourceList:
+      allOf:
+        - $ref: '#/components/schemas/CommonResult'
+        - type: object
+          properties:
+            data:
+              type: array
+              items: {$ref: '#/components/schemas/UmsResource'}
+    CommonResultPmsBrand:
+      allOf:
+        - $ref: '#/components/schemas/CommonResult'
+        - type: object
+          properties:
+            data: {$ref: '#/components/schemas/PmsBrand'}
+    CommonResultPmsBrandList:
+      allOf:
+        - $ref: '#/components/schemas/CommonResult'
+        - type: object
+          properties:
+            data:
+              type: array
+              items: {$ref: '#/components/schemas/PmsBrand'}
+    CommonResultPmsProductList:
+      allOf:
+        - $ref: '#/components/schemas/CommonResult'
+        - type: object
+          properties:
+            data:
+              type: array
+              items: {$ref: '#/components/schemas/PmsProduct'}
+    CommonResultPmsProductResult:
+      allOf:
+        - $ref: '#/components/schemas/CommonResult'
+        - type: object
+          properties:
+            data: {$ref: '#/components/schemas/PmsProductResult'}
+    CommonResultOmsOrderDetail:
+      allOf:
+        - $ref: '#/components/schemas/CommonResult'
+        - type: object
+          properties:
+            data: {$ref: '#/components/schemas/OmsOrderDetail'}
+    CommonResultCommonPageUmsAdmin:
+      allOf:
+        - $ref: '#/components/schemas/CommonResult'
+        - type: object
+          properties:
+            data:
+              allOf:
+                - $ref: '#/components/schemas/CommonPage'
+                - type: object
+                  properties:
+                    list:
+                      type: array
+                      items: {$ref: '#/components/schemas/UmsAdmin'}
+    CommonResultCommonPageUmsRole:
+      allOf:
+        - $ref: '#/components/schemas/CommonResult'
+        - type: object
+          properties:
+            data:
+              allOf:
+                - $ref: '#/components/schemas/CommonPage'
+                - type: object
+                  properties:
+                    list:
+                      type: array
+                      items: {$ref: '#/components/schemas/UmsRole'}
+    CommonResultCommonPageUmsMenu:
+      allOf:
+        - $ref: '#/components/schemas/CommonResult'
+        - type: object
+          properties:
+            data:
+              allOf:
+                - $ref: '#/components/schemas/CommonPage'
+                - type: object
+                  properties:
+                    list:
+                      type: array
+                      items: {$ref: '#/components/schemas/UmsMenu'}
+    CommonResultCommonPagePmsBrand:
+      allOf:
+        - $ref: '#/components/schemas/CommonResult'
+        - type: object
+          properties:
+            data:
+              allOf:
+                - $ref: '#/components/schemas/CommonPage'
+                - type: object
+                  properties:
+                    list:
+                      type: array
+                      items: {$ref: '#/components/schemas/PmsBrand'}
+    CommonResultCommonPagePmsProduct:
+      allOf:
+        - $ref: '#/components/schemas/CommonResult'
+        - type: object
+          properties:
+            data:
+              allOf:
+                - $ref: '#/components/schemas/CommonPage'
+                - type: object
+                  properties:
+                    list:
+                      type: array
+                      items: {$ref: '#/components/schemas/PmsProduct'}
+    CommonResultCommonPageOmsOrder:
+      allOf:
+        - $ref: '#/components/schemas/CommonResult'
+        - type: object
+          properties:
+            data:
+              allOf:
+                - $ref: '#/components/schemas/CommonPage'
+                - type: object
+                  properties:
+                    list:
+                      type: array
+                      items: {$ref: '#/components/schemas/OmsOrder'}
