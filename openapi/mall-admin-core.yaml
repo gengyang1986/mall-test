@@ -1016,7 +1016,7 @@ components:
       type: http
       scheme: bearer
       bearerFormat: JWT
-      description: 请求头 Authorization: Bearer {token}（jwt.tokenHeader=Authorization，jwt.tokenHead='Bearer '）
+      description: 请求头 Authorization Bearer {token}（jwt.tokenHeader=Authorization，jwt.tokenHead='Bearer '）
   parameters:
     PageNum:
       name: pageNum
